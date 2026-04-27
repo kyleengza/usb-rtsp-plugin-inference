@@ -1,0 +1,26 @@
+<section class="inference" data-plugin="inference">
+  <h2>Inference</h2>
+
+  <div class="inference-status" id="inference-status">
+    <span class="badge" id="inference-buf">events: 0</span>
+    <span class="badge" id="inference-rate">no recent events</span>
+    <a href="https://github.com/" id="inference-contract">CONTRACT.md</a>
+  </div>
+
+  <div class="inference-empty" id="inference-empty">
+    <p class="empty">
+      No detection events yet. Configure your inference producer to POST to
+      <code>/api/inference/events</code> on this host.
+      See <a href="/static/inference/CONTRACT.md">CONTRACT.md</a>.
+    </p>
+  </div>
+
+  <table class="streams" id="inference-table" hidden>
+    <thead>
+      <tr><th>when</th><th>path</th><th>label</th><th>conf</th><th>bbox</th></tr>
+    </thead>
+    <tbody id="inference-tbody"></tbody>
+  </table>
+</section>
+
+<script src="/static/inference/inference.js"></script>

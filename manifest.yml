@@ -1,0 +1,4 @@
+name: inference
+description: Receive detections + annotated streams from an external inference project
+version: 0.1.0
+default_enabled: false
