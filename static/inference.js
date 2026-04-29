@@ -130,12 +130,35 @@
   }
 
   async function deleteClip(name, file) {
-    if (!confirm(`Delete clip ${file}?`)) return;
+    if (!confirm(`Delete clip ${file}?`)) return false;
     try {
       const r = await fetch(`/api/inference/clips/${encodeURIComponent(name)}/${encodeURIComponent(file)}`,
                            { method: "DELETE", credentials: "same-origin" });
-      if (!r.ok) alert(`delete failed: ${r.status}`);
-    } catch (e) { alert(`delete error: ${e}`); }
+      if (!r.ok) {
+        alert(`delete failed: ${r.status}`);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      alert(`delete error: ${e}`);
+      return false;
+    }
+  }
+
+  async function refreshClipsTotal(card, name) {
+    // Lightweight: re-fetch only to update the totals line; doesn't touch rows.
+    const totalEl = card.querySelector("[data-clips-total]");
+    if (!totalEl) return;
+    try {
+      const r = await fetch(`/api/inference/jobs/${encodeURIComponent(name)}/clips`,
+                           { credentials: "same-origin" });
+      if (!r.ok) return;
+      const j = await r.json();
+      const n = (j.clips || []).length;
+      totalEl.textContent = n
+        ? `${n} clip${n === 1 ? "" : "s"} · ${fmtSize(j.total_size_bytes || 0)}`
+        : "no clips";
+    } catch { /* ignore */ }
   }
 
   function previewSrc(name) {
@@ -326,13 +349,26 @@
         }
         return;
       }
-      // Per-clip delete button.
+      // Per-clip delete button. Surgically remove just the deleted clip's
+      // two rows so any inline <video> open elsewhere in the table keeps
+      // playing — full loadClips() would tear down every row.
       const del = e.target.closest("[data-clip-delete]");
       if (del) {
         const card = del.closest("[data-inference-job]");
         const name = card?.dataset.inferenceJob;
         const file = del.dataset.clipDelete;
-        if (name && file) deleteClip(name, file).then(() => loadClips(card, name));
+        if (!name || !file) return;
+        deleteClip(name, file).then(ok => {
+          if (!ok) return;
+          card.querySelector(`tr[data-clip="${CSS.escape(file)}"]`)?.remove();
+          card.querySelector(`tr[data-clip-player-for="${CSS.escape(file)}"]`)?.remove();
+          // If the table is now empty, restore the empty placeholder row.
+          const tbody = card.querySelector("[data-clips-table] tbody");
+          if (tbody && !tbody.querySelector("tr[data-clip]")) {
+            tbody.innerHTML = `<tr class="empty"><td colspan="4">no clips recorded</td></tr>`;
+          }
+          refreshClipsTotal(card, name);
+        });
         return;
       }
       // Per-clip play (inline video) toggle.
