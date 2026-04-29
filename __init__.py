@@ -50,6 +50,35 @@ def _live_for_job(job_name: str, live: dict) -> dict | None:
     }
 
 
+def list_inference_sources(ctx) -> list[dict]:
+    """Every mediamtx path that's a *source* (not itself an inference
+    output) plus whether inference is currently turned on for it.
+    Lets the settings page show one-click toggles for cam0 / mypc /
+    relay sources without making the user hand-build job specs."""
+    jobs_list = jobs_mod.list_jobs(ctx)
+    inference_path_names = {j.name for j in jobs_list}
+    # Map upstream URL → existing job (so toggle reflects ON when a
+    # job exists, even if its name doesn't follow the <src>-ai pattern).
+    by_upstream = {j.upstream: j for j in jobs_list}
+    out: list[dict] = []
+    for name, p in live_paths_state().items():
+        if name in inference_path_names:
+            continue  # it's an inference output, not a candidate source
+        upstream = f"rtsp://127.0.0.1:8554/{name}"
+        existing = by_upstream.get(upstream)
+        out.append({
+            "source": name,
+            "upstream": upstream,
+            "ready": bool(p.get("ready") or p.get("sourceReady")),
+            "has_inference": existing is not None,
+            "job_name": existing.name if existing else f"{name}-ai",
+            "backend": existing.backend if existing else None,
+            "model": existing.model if existing else None,
+        })
+    out.sort(key=lambda x: x["source"])
+    return out
+
+
 def register(app, ctx) -> None:
     app.include_router(make_router(ctx))
     static_dir = PLUGIN_DIR / "static"

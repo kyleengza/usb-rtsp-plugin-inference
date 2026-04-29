@@ -198,6 +198,70 @@ def make_router(ctx) -> APIRouter:
     def get_config() -> dict[str, Any]:
         return {"clips_root": str(plugin_config.clips_root(ctx))}
 
+    @r.get("/sources")
+    def get_sources() -> dict[str, Any]:
+        """List every mediamtx path that *could* be inferred on, plus
+        whether inference is currently enabled for it. Used by the
+        settings-page one-click toggle."""
+        from . import list_inference_sources
+        # Pick a sensible default backend + model for sources that
+        # don't yet have a job — Hailo if available, CPU otherwise.
+        h = models_mod.hailo_models()
+        c = models_mod.cpu_models()
+        default_backend = "hailo" if h else ("cpu" if c else "hailo")
+        default_model = (h[0].name if h else (c[0].name if c else "yolov8s"))
+        return {
+            "sources": list_inference_sources(ctx),
+            "default_backend": default_backend,
+            "default_model": default_model,
+        }
+
+    class SourceToggleIn(BaseModel):
+        enabled: bool
+
+    @r.patch("/sources/{source_name}")
+    def toggle_source(source_name: str, payload: SourceToggleIn) -> dict[str, Any]:
+        """One-click create/delete of an inference job for a given
+        mediamtx source path. Job name defaults to ``<source>-ai``;
+        upstream is rtsp://127.0.0.1:8554/<source>; backend+model
+        come from the registry default."""
+        if not jobs_mod.NAME_RE.match(source_name):
+            raise HTTPException(400, f"invalid source name: {source_name!r}")
+        upstream = f"rtsp://127.0.0.1:8554/{source_name}"
+        existing = next(
+            (j for j in jobs_mod.list_jobs(ctx) if j.upstream == upstream),
+            None,
+        )
+        if payload.enabled:
+            if existing:
+                return {"job": jobs_mod.job_to_public_dict(existing),
+                        "applied": "already_present"}
+            h = models_mod.hailo_models()
+            c = models_mod.cpu_models()
+            backend = "hailo" if h else "cpu"
+            model = h[0].name if h else (c[0].name if c else "")
+            if not model:
+                raise HTTPException(400, "no inference models available on this host")
+            new_job = jobs_mod.Job(
+                name=f"{source_name}-ai",
+                upstream=upstream,
+                enabled=True,
+                backend=backend,
+                model=model,
+            )
+            try:
+                saved = jobs_mod.add_job(ctx, new_job)
+            except jobs_mod.ValidationError as e:
+                raise HTTPException(400, str(e))
+            return {"job": jobs_mod.job_to_public_dict(saved),
+                    **_apply_job_to_mediamtx(ctx, saved.name)}
+        # disable
+        if not existing:
+            return {"applied": "not_present"}
+        jobs_mod.delete_job(ctx, existing.name)
+        return {"applied": "removed",
+                **_remove_job_from_mediamtx(existing.name)}
+
     @r.put("/config")
     def put_config(payload: PluginConfigIn) -> dict[str, Any]:
         try:

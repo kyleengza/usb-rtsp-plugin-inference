@@ -1,9 +1,20 @@
+<link rel="stylesheet" href="/static/inference/inference.css">
 <div class="plugin-settings" data-plugin-settings="inference">
-  <h3 class="inputs-heading">Plugin settings</h3>
+  <h3 class="inputs-heading">Inference targets</h3>
 
-  <p class="hint">Per-job knobs (backend, model, classes, threshold, clip
-    triggers) live on each card on the dashboard. Settings here are
-    plugin-wide.</p>
+  <p class="hint">Toggle inference on any mediamtx path (USB camera,
+    relay source, etc.). Turning it on creates a new path
+    <code>&lt;source&gt;-ai</code> with annotated frames; turning it
+    off removes the inference job. Per-job knobs (model, threshold,
+    classes, clips) live on the dashboard card after enable.</p>
+
+  <div data-inference-sources>
+    <p class="empty">loading available paths…</p>
+  </div>
+
+  <h3 class="inputs-heading" style="margin-top: 1.5rem">Plugin settings</h3>
+
+  <p class="hint">Settings below are plugin-wide.</p>
 
   <form data-inference-config class="advanced-grid">
     <label class="adv" style="grid-column: 1 / -1">Clips root
@@ -24,6 +35,82 @@
 
 <script>
 (function () {
+  // ─── Source-toggle list ────────────────────────────────────────────
+  const sourcesBox = document.querySelector("[data-inference-sources]");
+  function escHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+  async function renderSources() {
+    if (!sourcesBox) return;
+    let data;
+    try {
+      const r = await fetch("/api/inference/sources", { credentials: "same-origin" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      data = await r.json();
+    } catch (e) {
+      sourcesBox.innerHTML = `<p class="empty">couldn't load sources: ${escHtml(e)}</p>`;
+      return;
+    }
+    const sources = data.sources || [];
+    if (!sources.length) {
+      sourcesBox.innerHTML = `<p class="empty">no mediamtx paths available — enable a camera or relay source first.</p>`;
+      return;
+    }
+    sourcesBox.innerHTML = `<ul class="streams" style="list-style:none;padding:0;margin:0">${
+      sources.map(s => `
+        <li style="display:flex;align-items:center;gap:0.7rem;padding:0.4rem 0;border-bottom:1px solid var(--border)">
+          <label class="switch" title="enable inference on ${escHtml(s.source)}">
+            <input type="checkbox" data-source-toggle="${escHtml(s.source)}" ${s.has_inference ? "checked" : ""}>
+            <span class="slider"></span>
+          </label>
+          <code style="min-width:8em">${escHtml(s.source)}</code>
+          <span class="muted" style="font-size:0.78rem">→ <code>${escHtml(s.job_name)}</code></span>
+          ${s.has_inference
+            ? `<span class="badge ok" style="font-size:0.7rem">${escHtml(s.backend || "")} · ${escHtml(s.model || "")}</span>`
+            : `<span class="muted small" style="font-size:0.72rem">off</span>`}
+          <span class="form-status" data-source-status="${escHtml(s.source)}" style="margin-left:auto;font-size:0.72rem"></span>
+        </li>`).join("")
+    }</ul>`;
+  }
+  if (sourcesBox) {
+    document.addEventListener("click", async e => {
+      const cb = e.target.closest("[data-source-toggle]");
+      if (!cb || cb.tagName !== "INPUT") return;
+      const src = cb.dataset.sourceToggle;
+      const status = document.querySelector(`[data-source-status="${src}"]`);
+      const wantOn = cb.checked;
+      cb.disabled = true;
+      if (status) status.textContent = wantOn ? "enabling…" : "removing…";
+      try {
+        const r = await fetch(`/api/inference/sources/${encodeURIComponent(src)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ enabled: wantOn }),
+        });
+        const text = await r.text();
+        let data = null;
+        try { data = JSON.parse(text); } catch {}
+        if (!r.ok) {
+          if (status) status.textContent = `✗ ${data?.detail || r.status}`;
+          cb.checked = !wantOn;  // revert UI
+        } else {
+          await renderSources();
+        }
+      } catch (err) {
+        if (status) status.textContent = `✗ ${err}`;
+        cb.checked = !wantOn;
+      } finally {
+        cb.disabled = false;
+      }
+    });
+    renderSources();
+    // Light refresh — picks up new mediamtx paths if a relay is added
+    // while this page is open.
+    setInterval(renderSources, 8000);
+  }
+
+  // ─── Plugin-wide config (clips_root) ───────────────────────────────
   const form = document.querySelector("[data-inference-config]");
   if (!form) return;
   const input = form.querySelector("[name=clips_root]");
