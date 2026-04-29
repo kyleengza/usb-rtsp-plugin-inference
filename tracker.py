@@ -54,6 +54,10 @@ class _Track:
     last_seen_ts: float
     first_seen_ts: float
     hits: int = 1
+    # True once the track has been matched ``min_hits`` times — only
+    # confirmed tracks are drawn and only confirmed tracks emit
+    # enter / leave events.
+    confirmed: bool = False
 
 
 # EMA factor for smoothed confidence. 0.25 means each new frame
@@ -77,9 +81,15 @@ class IoUTracker:
         self,
         iou_threshold: float = 0.3,
         ttl_s: float = 2.0,
+        min_hits: int = 3,
     ) -> None:
         self.iou_threshold = float(iou_threshold)
         self.ttl_s = float(ttl_s)
+        # Banding: a track must match at least ``min_hits`` frames before
+        # the worker draws its box. Filters out single-frame false
+        # positives that would otherwise blink on for one frame and
+        # leave a confidence ghost behind.
+        self.min_hits = max(1, int(min_hits))
         self._tracks: dict[int, _Track] = {}
         self._next_id = 1
 
@@ -121,7 +131,10 @@ class IoUTracker:
                 used_det.add(best_idx)
                 matches[tid] = best_idx
 
-        # Unmatched detections → new tracks
+        # Unmatched detections → new (tentative) tracks. Don't emit
+        # an "enter" event yet — wait until the track is confirmed
+        # via min_hits, otherwise a one-frame false positive would
+        # spam events + clip triggers.
         for i, d in enumerate(detections):
             if i in used_det:
                 continue
@@ -132,46 +145,52 @@ class IoUTracker:
                 box=d.box, score=d.score, smoothed_score=d.score,
                 first_seen_ts=ts_s, last_seen_ts=ts_s,
             )
-            events.append(TrackEvent(
-                kind="enter", track_id=tid, label=d.label,
-                score=d.score, box=d.box, ts=ts_s,
-            ))
             matches[tid] = i
 
-        # Expire stale tracks
+        # Confirmation: a track that just hit min_hits this frame fires
+        # its delayed "enter" event. Tracking this on _Track via the
+        # ``confirmed`` flag avoids a per-step recompute.
+        for tid, det_idx in matches.items():
+            t = self._tracks.get(tid)
+            if not t or t.confirmed:
+                continue
+            if t.hits >= self.min_hits:
+                t.confirmed = True
+                d = detections[det_idx]
+                events.append(TrackEvent(
+                    kind="enter", track_id=tid, label=d.label,
+                    score=d.score, box=d.box, ts=ts_s,
+                ))
+
+        # Expire stale tracks. Only emit "leave" for tracks that were
+        # actually shown to the user (confirmed); tentative-then-dropped
+        # tracks vanish silently.
         for tid in list(self._tracks.keys()):
             t = self._tracks[tid]
             if (ts_s - t.last_seen_ts) > self.ttl_s:
-                events.append(TrackEvent(
-                    kind="leave", track_id=tid, label=t.label,
-                    score=t.score, box=t.box, ts=ts_s,
-                ))
+                if t.confirmed:
+                    events.append(TrackEvent(
+                        kind="leave", track_id=tid, label=t.label,
+                        score=t.score, box=t.box, ts=ts_s,
+                    ))
                 del self._tracks[tid]
 
-        # Build the tracked-detection list. Two sources:
-        #   (a) tracks that matched a detection this frame — drawn from the
-        #       fresh detection (current box) with the track's EMA score.
-        #   (b) tracks that did NOT match this frame but are still alive
-        #       (within ttl_s) — drawn at the track's last known box so
-        #       the bounding box doesn't flicker off when a frame's
-        #       detection score dips below the user threshold or the
-        #       backend briefly misses the object. ttl_s caps how long
-        #       a "ghost" box can linger after the real object leaves.
+        # Emit only confirmed tracks that matched this frame. Tentative
+        # tracks (hits < min_hits) are tracked internally but invisible
+        # — that's the "banding" filter. Unmatched-but-still-alive
+        # tracks are also invisible: when an object disappears, the
+        # box disappears immediately, no ghosts. ttl_s still controls
+        # how long the tracker holds the slot for re-id continuity if
+        # the object pops back into view at a similar position.
         tracked: list[Detection] = []
         for tid, det_idx in matches.items():
-            d = detections[det_idx]
             t = self._tracks.get(tid)
+            if not t or not t.confirmed:
+                continue
+            d = detections[det_idx]
             tracked.append(Detection(
                 class_id=d.class_id, label=d.label, score=d.score, box=d.box,
                 track_id=tid,
-                smoothed_score=(t.smoothed_score if t else d.score),
-            ))
-        for tid, t in self._tracks.items():
-            if tid in matches:
-                continue
-            tracked.append(Detection(
-                class_id=t.class_id, label=t.label,
-                score=t.score, box=t.box, track_id=tid,
                 smoothed_score=t.smoothed_score,
             ))
         return tracked, events

@@ -39,6 +39,11 @@ class Job:
     threshold: float = 0.4
     inference_queue: int = 5
     track_occlusion_s: float = 2.0
+    # Frames a new track must match before it gets drawn ("banding"). 1 =
+    # show immediately (jitters on noisy single-frame detections); 3 ≈
+    # 100ms warm-up at 30fps; higher = even more confirmation, more lag
+    # before the box first appears.
+    min_hits: int = 3
     clips: ClipsConfig = field(default_factory=ClipsConfig)
 
 
@@ -84,6 +89,7 @@ def _load_jobs(path: Path) -> list[Job]:
             threshold=float(entry.get("threshold", 0.4)),
             inference_queue=int(entry.get("inference_queue", 5)),
             track_occlusion_s=float(entry.get("track_occlusion_s", 2.0)),
+            min_hits=int(entry.get("min_hits", 3)),
             clips=clips,
         ))
     return out
@@ -119,6 +125,8 @@ def _validate(j: Job, existing_names: set[str], *, allow_existing: str | None = 
         raise ValidationError("inference_queue must be in [0, 60]")
     if j.track_occlusion_s < 0 or j.track_occlusion_s > 60:
         raise ValidationError("track_occlusion_s must be in [0, 60]")
+    if j.min_hits < 1 or j.min_hits > 30:
+        raise ValidationError("min_hits must be in [1, 30]")
     if j.clips.trigger not in VALID_TRIGGERS:
         raise ValidationError(f"clips.trigger must be one of {VALID_TRIGGERS}")
     if j.clips.pre_roll_s < 0 or j.clips.post_roll_s < 0:

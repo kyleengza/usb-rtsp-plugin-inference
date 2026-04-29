@@ -42,6 +42,7 @@ def _build_runondemand(j: jobs_mod.Job, clips_root: str) -> str:
         "--threshold", f"{j.threshold:.3f}",
         "--inference-queue", str(j.inference_queue),
         "--track-occlusion-s", f"{j.track_occlusion_s:.2f}",
+        "--min-hits", str(j.min_hits),
     ]
     if j.classes:
         parts.extend(["--classes", ",".join(j.classes)])

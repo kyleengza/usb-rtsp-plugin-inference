@@ -232,6 +232,7 @@
       threshold: parseFloat(fd.get("threshold")) || 0.4,
       inference_queue: parseInt(fd.get("inference_queue") || "5", 10),
       track_occlusion_s: parseFloat(fd.get("track_occlusion_s")) || 2.0,
+      min_hits: parseInt(fd.get("min_hits") || "3", 10),
       clips: {
         enabled: !!fd.get("clips_enabled"),
         pre_roll_s: 0,  // v1: pre-roll not supported

@@ -167,6 +167,7 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--classes", default="")
     ap.add_argument("--inference-queue", type=int, default=5)
     ap.add_argument("--track-occlusion-s", type=float, default=2.0)
+    ap.add_argument("--min-hits", type=int, default=3)
     # Clip recording
     ap.add_argument("--clips-enabled", action="store_true")
     ap.add_argument("--clips-root", default="")  # absolute path, plugin-config-resolved
@@ -191,7 +192,11 @@ def main() -> int:
     from tracker import IoUTracker  # type: ignore
     from events import JobEventLog  # type: ignore
     from clips import ClipRecorder  # type: ignore
-    tracker = IoUTracker(iou_threshold=0.3, ttl_s=args.track_occlusion_s)
+    tracker = IoUTracker(
+        iou_threshold=0.3,
+        ttl_s=args.track_occlusion_s,
+        min_hits=args.min_hits,
+    )
     event_log = JobEventLog(args.job_name) if args.job_name else None
 
     cap = open_upstream(args.upstream)
