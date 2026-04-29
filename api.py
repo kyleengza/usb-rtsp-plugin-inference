@@ -148,7 +148,10 @@ def make_router(ctx) -> APIRouter:
     def list_clips(name: str) -> dict[str, Any]:
         if not jobs_mod.get_job(ctx, name):
             raise HTTPException(404, f"no such job: {name}")
-        return {"clips": clips_mod.list_clips(name)}
+        return {
+            "clips": clips_mod.list_clips(name),
+            "total_size_bytes": clips_mod.clips_total_size(name),
+        }
 
     @r.get("/clips/{name}/{file_name}")
     def download_clip(name: str, file_name: str):

@@ -76,23 +76,49 @@
 
   async function loadClips(card, name) {
     const tbody = card.querySelector("[data-clips-table] tbody");
+    const totalEl = card.querySelector("[data-clips-total]");
     if (!tbody) return;
     let clips = [];
+    let totalBytes = 0;
     try {
       const r = await fetch(`/api/inference/jobs/${encodeURIComponent(name)}/clips`,
                            { credentials: "same-origin" });
-      if (r.ok) clips = (await r.json()).clips || [];
+      if (r.ok) {
+        const j = await r.json();
+        clips = j.clips || [];
+        totalBytes = j.total_size_bytes || 0;
+      }
     } catch { /* ignore */ }
+    if (totalEl) {
+      totalEl.textContent = clips.length
+        ? `${clips.length} clip${clips.length === 1 ? "" : "s"} · ${fmtSize(totalBytes)}`
+        : "no clips";
+    }
     if (!clips.length) {
       tbody.innerHTML = `<tr class="empty"><td colspan="4">no clips recorded</td></tr>`;
       return;
     }
-    tbody.innerHTML = clips.map(c => `<tr>
-      <td><a href="/api/inference/clips/${encodeURIComponent(name)}/${encodeURIComponent(c.name)}" target="_blank" rel="noopener">${esc(c.name)}</a></td>
-      <td>${esc(fmtSize(c.size_bytes))}</td>
-      <td>${esc(fmtAgo(c.mtime))}</td>
-      <td><button type="button" class="copy" data-clip-delete="${esc(c.name)}">delete</button></td>
-    </tr>`).join("");
+    tbody.innerHTML = clips.map(c => {
+      const dl = `/api/inference/clips/${encodeURIComponent(name)}/${encodeURIComponent(c.name)}`;
+      return `<tr data-clip="${esc(c.name)}">
+        <td>
+          <button type="button" class="copy" data-clip-play="${esc(c.name)}">▶</button>
+          <code>${esc(c.name)}</code>
+        </td>
+        <td>${esc(fmtSize(c.size_bytes))}</td>
+        <td>${esc(fmtAgo(c.mtime))}</td>
+        <td>
+          <a href="${dl}" download="${esc(c.name)}">download</a>
+          · <button type="button" class="copy" data-clip-delete="${esc(c.name)}">delete</button>
+        </td>
+      </tr>
+      <tr class="clip-player-row" data-clip-player-for="${esc(c.name)}" hidden>
+        <td colspan="4">
+          <video controls preload="none" style="width:100%;max-width:720px;background:#000"
+                 src="${dl}"></video>
+        </td>
+      </tr>`;
+    }).join("");
   }
 
   async function deleteClip(name, file) {
@@ -246,6 +272,23 @@
         const name = card?.dataset.inferenceJob;
         const file = del.dataset.clipDelete;
         if (name && file) deleteClip(name, file).then(() => loadClips(card, name));
+        return;
+      }
+      // Per-clip play (inline video) toggle.
+      const play = e.target.closest("[data-clip-play]");
+      if (play) {
+        const card = play.closest("[data-inference-job]");
+        const file = play.dataset.clipPlay;
+        const player = card.querySelector(`[data-clip-player-for="${CSS.escape(file)}"]`);
+        if (player) {
+          player.hidden = !player.hidden;
+          play.classList.toggle("open", !player.hidden);
+          const v = player.querySelector("video");
+          if (v) {
+            if (!player.hidden) v.play().catch(() => {});
+            else v.pause();
+          }
+        }
       }
     });
 

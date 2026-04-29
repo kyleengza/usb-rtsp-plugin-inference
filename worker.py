@@ -244,7 +244,8 @@ def main() -> int:
                     })
             if clipper:
                 for ev in track_events:
-                    clipper.maybe_start(ev.kind, ev.track_id, ev.label, ev.ts)
+                    if clipper.should_trigger(ev.kind, ev.label):
+                        clipper.on_trigger(ev.ts)
             annotate(frame, tracked, fps_observed, len(tracked))
             if clipper:
                 cur_ids = {getattr(d, "track_id", 0) for d in tracked}

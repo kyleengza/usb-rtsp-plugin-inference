@@ -1,25 +1,30 @@
 """Per-job clip recorder.
 
-When a tracked-ID enter event fires for an allowed class, spawn a new
-ffmpeg subprocess that writes an mp4 to disk; tee each subsequent frame
-to it. When the triggering track has been absent for ``post_roll_s``
-seconds, close the ffmpeg and finalise the file.
+Single-clip-at-a-time. While ANY qualifying trigger event is active, one
+ffmpeg subprocess writes BGR frames to a timestamped mp4. The clip
+extends as long as a tracked object is still in frame; it closes
+``post_roll_s`` seconds after the frame goes empty. The next trigger
+opens a fresh clip.
 
-v1 limitation: post-roll only — no pre-roll. Pre-roll requires a frame
-ring buffer (raw frames are too big at 1280x720 BGR; would need JPEG
-or downscale ring). Documented in the plan; fine for a first cut.
+This avoids the per-track concurrency the previous design had — when
+the tracker re-births a noisy track every couple of seconds, we used
+to spawn an ffmpeg per re-birth, multiplying the encode load (and on
+this Pi: tripping the PSU). One writer keeps load bounded and the
+filename simple: ``YYYYMMDDTHHMMSS.mp4``.
 
-Retention: after each clip finalises, prune the oldest until at most
-``retention_count`` clips remain in the job's directory.
+v1 limitation: no pre-roll. A 5s pre-roll at 1280x720 BGR is ~250MB
+of RAM; would need a JPEG/downscale ring buffer. Documented and
+deferred.
+
+Retention: after each clip finalises, prune the oldest mp4 in the
+job's directory until at most ``retention_count`` remain.
 """
 from __future__ import annotations
 
-import os
 import subprocess
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 import numpy as np  # type: ignore
 
@@ -28,8 +33,6 @@ CLIPS_ROOT = Path.home() / ".cache" / "usb-rtsp" / "inference-clips"
 
 @dataclass
 class _ActiveClip:
-    track_id: int
-    label: str
     started_at: float
     last_seen_at: float
     file_path: Path
@@ -58,75 +61,77 @@ class ClipRecorder:
         self.trigger_classes = set(trigger_classes) if trigger_classes else None
         self.dir = CLIPS_ROOT / job_name
         self.dir.mkdir(parents=True, exist_ok=True)
-        self._active: list[_ActiveClip] = []
+        self._current: _ActiveClip | None = None
 
     # --- public API ----------------------------------------------------
 
     def should_trigger(self, event_kind: str, label: str) -> bool:
-        """Whether an inbound track event should start a new clip."""
+        """Whether an inbound track event should start (or extend) a clip."""
         if event_kind != "enter":
             return False
         if self.trigger == "any_detection":
             return True
         if self.trigger == "class_filter":
             return self.trigger_classes is None or label in self.trigger_classes
-        # track_enter (default): trigger on any class the user permitted via
-        # trigger_classes; if empty, all classes count.
+        # track_enter (default): if trigger_classes set, restrict; else allow all.
         if self.trigger_classes:
             return label in self.trigger_classes
         return True
 
-    def maybe_start(self, event_kind: str, track_id: int, label: str, ts: float) -> None:
-        if not self.should_trigger(event_kind, label):
-            return
-        # Already an active clip for this track? Skip.
-        if any(c.track_id == track_id for c in self._active):
-            return
-        path = self._build_path(ts, track_id, label)
-        proc = self._spawn_ffmpeg(path)
-        self._active.append(_ActiveClip(
-            track_id=track_id, label=label,
-            started_at=ts, last_seen_at=ts,
-            file_path=path, proc=proc,
-        ))
+    def on_trigger(self, ts: float) -> None:
+        """Open a clip if none active; otherwise extend the current one."""
+        if self._current is None:
+            self._current = self._spawn(ts)
+        else:
+            self._current.last_seen_at = ts
 
     def write_frame(self, frame: np.ndarray, current_track_ids: set[int], ts: float) -> None:
-        """Tee the current frame to every active clip; refresh
-        last_seen_at for clips whose track is still present; close any
-        whose track has been gone for ``post_roll_s``."""
-        if not self._active:
+        """Tee the current frame to the active clip (if any). Any tracked
+        entity present in ``current_track_ids`` keeps the clip open. After
+        ``post_roll_s`` seconds of empty frames, finalise."""
+        if self._current is None:
             return
-        bytes_ = frame.tobytes()
-        still_active: list[_ActiveClip] = []
-        for clip in self._active:
-            try:
-                if clip.proc.stdin:
-                    clip.proc.stdin.write(bytes_)
-            except (BrokenPipeError, IOError):
-                self._finalise(clip)
-                continue
-            if clip.track_id in current_track_ids:
-                clip.last_seen_at = ts
-                still_active.append(clip)
-            else:
-                if (ts - clip.last_seen_at) > self.post_roll_s:
-                    self._finalise(clip)
-                else:
-                    still_active.append(clip)
-        self._active = still_active
+        try:
+            if self._current.proc.stdin:
+                self._current.proc.stdin.write(frame.tobytes())
+        except (BrokenPipeError, IOError):
+            self._finalise(self._current)
+            self._current = None
+            return
+        if current_track_ids:
+            # Any tracked object in this frame extends the recording.
+            self._current.last_seen_at = ts
+        elif (ts - self._current.last_seen_at) > self.post_roll_s:
+            self._finalise(self._current)
+            self._current = None
 
     def close_all(self) -> None:
-        for clip in self._active:
-            self._finalise(clip)
-        self._active = []
+        if self._current is not None:
+            self._finalise(self._current)
+            self._current = None
 
     # --- internals -----------------------------------------------------
 
-    def _build_path(self, ts: float, track_id: int, label: str) -> Path:
-        # ISO8601 with seconds resolution, colons replaced for cross-FS safety.
+    def _spawn(self, ts: float) -> _ActiveClip:
+        path = self._build_path(ts)
+        proc = self._spawn_ffmpeg(path)
+        return _ActiveClip(
+            started_at=ts, last_seen_at=ts, file_path=path, proc=proc,
+        )
+
+    def _build_path(self, ts: float) -> Path:
         iso = time.strftime("%Y%m%dT%H%M%S", time.localtime(ts))
-        safe_label = "".join(c if c.isalnum() or c == "_" else "_" for c in label)
-        return self.dir / f"{iso}__t{track_id}__{safe_label}.mp4"
+        # Append a short -N suffix only when needed to avoid filename collisions
+        # within the same second (rare, but possible if a clip closes + reopens
+        # immediately).
+        candidate = self.dir / f"{iso}.mp4"
+        if not candidate.exists():
+            return candidate
+        for i in range(1, 100):
+            c = self.dir / f"{iso}-{i}.mp4"
+            if not c.exists():
+                return c
+        return candidate  # fallback
 
     def _spawn_ffmpeg(self, path: Path) -> subprocess.Popen:
         cmd = [
@@ -192,6 +197,19 @@ def list_clips(job_name: str) -> list[dict]:
             "mtime": stat.st_mtime,
         })
     return out
+
+
+def clips_total_size(job_name: str) -> int:
+    job_dir = CLIPS_ROOT / job_name
+    if not job_dir.is_dir():
+        return 0
+    total = 0
+    for p in job_dir.glob("*.mp4"):
+        try:
+            total += p.stat().st_size
+        except OSError:
+            continue
+    return total
 
 
 def clip_path(job_name: str, file_name: str) -> Path | None:
