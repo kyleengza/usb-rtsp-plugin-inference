@@ -1,5 +1,10 @@
 name: inference
 description: Hailo + CPU inference jobs — subscribe to a path, infer, republish annotated
 version: 0.2.0
-default_enabled: true
+# User-installed plugin (install via `./install.sh --add-plugin
+# https://github.com/kyleengza/usb-rtsp-plugin-inference`). Default
+# off after install — user opts in via the panel's Settings page,
+# matching the relay plugin's convention. Bundled plugins like usb
+# default-on; out-of-tree plugins default-off.
+default_enabled: false
 order: 30
