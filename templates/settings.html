@@ -1,0 +1,75 @@
+<div class="plugin-settings" data-plugin-settings="inference">
+  <h3 class="inputs-heading">Plugin settings</h3>
+
+  <p class="hint">Per-job knobs (backend, model, classes, threshold, clip
+    triggers) live on each card on the dashboard. Settings here are
+    plugin-wide.</p>
+
+  <form data-inference-config class="advanced-grid">
+    <label class="adv">Clips root
+      <input type="text" name="clips_root" placeholder="loading…" required>
+      <small>absolute path; <code>~</code> expands to <code>$HOME</code>.
+        Subfolders are auto-created per job (<code>cam0-ai/…</code>,
+        <code>relay-front-ai/…</code>). Switch to a network mount when
+        you want clips off the SD card.</small>
+    </label>
+
+    <div class="actions" style="grid-column: 1/-1">
+      <button type="submit">Save &amp; reload</button>
+      <span class="form-status" data-clips-root-status></span>
+    </div>
+  </form>
+</div>
+
+<script>
+(function () {
+  const form = document.querySelector("[data-inference-config]");
+  if (!form) return;
+  const input = form.querySelector("[name=clips_root]");
+  const status = form.querySelector("[data-clips-root-status]");
+
+  function setStatus(kind, msg) {
+    status.textContent = msg || "";
+    status.classList.remove("ok", "err");
+    if (kind) status.classList.add(kind);
+  }
+  function fmtErr(d, fallback) {
+    if (d == null) return String(fallback);
+    if (typeof d === "string") return d;
+    if (Array.isArray(d)) return d.map(x => x?.msg || JSON.stringify(x)).join("; ");
+    return d?.msg || JSON.stringify(d);
+  }
+
+  fetch("/api/inference/config", { credentials: "same-origin" })
+    .then(r => r.ok ? r.json() : null)
+    .then(d => { if (d?.clips_root) input.value = d.clips_root; })
+    .catch(() => {});
+
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    const want = input.value.trim();
+    if (!want) { setStatus("err", "clips_root must not be empty"); return; }
+    setStatus(null, "saving…");
+    try {
+      const r = await fetch("/api/inference/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ clips_root: want }),
+      });
+      const text = await r.text();
+      let data = null;
+      try { data = JSON.parse(text); } catch {}
+      if (!r.ok) {
+        setStatus("err", `HTTP ${r.status}: ${data ? fmtErr(data.detail, r.status) : (text || r.status)}`);
+        return;
+      }
+      const bits = ["saved", data.render || "", data.restart ? `restart=${data.restart}` : ""].filter(Boolean);
+      setStatus("ok", bits.join(" · "));
+      if (data.clips_root) input.value = data.clips_root;
+    } catch (err) {
+      setStatus("err", String(err));
+    }
+  });
+})();
+</script>

@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from fastapi.responses import FileResponse
 
-from core.helpers import REPO_DIR, systemctl
+from core.helpers import REPO_DIR, api_get, api_post, systemctl
 
 from . import jobs as jobs_mod
 from . import models as models_mod
@@ -173,6 +173,27 @@ def make_router(ctx) -> APIRouter:
         if not jobs_mod.delete_job(ctx, name):
             raise HTTPException(404, f"no such job: {name}")
         return {"ok": True, **_rerender_and_restart()}
+
+    @r.post("/jobs/{name}/kick")
+    def kick_readers(name: str) -> dict[str, Any]:
+        """Kick every webrtc + rtsp reader on this job's path. Used by
+        the dashboard preview-fold to make worker shutdown immediate
+        instead of waiting for runOnDemandCloseAfter (and any ICE
+        teardown lag). Best-effort; failures don't surface."""
+        if not jobs_mod.get_job(ctx, name):
+            raise HTTPException(404, f"no such job: {name}")
+        kicked = []
+        for kind in ("rtspsessions", "webrtcsessions"):
+            data = api_get(f"/v3/{kind}/list") or {}
+            for s in data.get("items", []) or []:
+                if s.get("path") != name:
+                    continue
+                sid = s.get("id")
+                if not sid:
+                    continue
+                code, _ = api_post(f"/v3/{kind}/kick/{sid}")
+                kicked.append({"kind": kind, "id": sid, "status": code})
+        return {"kicked": kicked}
 
     @r.patch("/jobs/{name}/clips")
     def toggle_clips(name: str, payload: ClipsToggleIn) -> dict[str, Any]:

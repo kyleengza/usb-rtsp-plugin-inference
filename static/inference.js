@@ -299,92 +299,19 @@
     }
   }
 
-  function wireClipsRootEdit() {
-    const editBtn = document.querySelector("[data-edit-clips-root]");
-    if (!editBtn) return;
-    const display = document.querySelector("[data-clips-root-display]");
-    if (!display) return;
-    editBtn.addEventListener("click", () => {
-      // Toggle to inline edit mode.
-      const current = display.textContent.trim();
-      const row = display.parentElement;
-      const original = display.outerHTML + " " + editBtn.outerHTML;
-      // Build edit form.
-      const input = document.createElement("input");
-      input.type = "text";
-      input.value = current;
-      input.setAttribute("data-clips-root-input", "");
-      const save = document.createElement("button");
-      save.type = "button";
-      save.className = "copy";
-      save.textContent = "save";
-      const cancel = document.createElement("button");
-      cancel.type = "button";
-      cancel.className = "copy";
-      cancel.textContent = "cancel";
-      const status = document.createElement("span");
-      status.className = "inference-config-status";
-      status.setAttribute("data-clips-root-status", "");
-      // Replace display + edit button with the input cluster.
-      display.replaceWith(input);
-      editBtn.replaceWith(save);
-      save.after(cancel, status);
-      input.focus();
-      input.select();
-
-      const restore = (newPath) => {
-        const code = document.createElement("code");
-        code.setAttribute("data-clips-root-display", "");
-        code.textContent = newPath;
-        const newEdit = document.createElement("button");
-        newEdit.type = "button";
-        newEdit.className = "copy";
-        newEdit.setAttribute("data-edit-clips-root", "");
-        newEdit.textContent = "edit";
-        // Wipe edit cluster + put display back.
-        input.replaceWith(code);
-        save.replaceWith(newEdit);
-        cancel.remove();
-        status.remove();
-        wireClipsRootEdit();  // re-wire for next time
-      };
-      cancel.addEventListener("click", () => restore(current));
-      save.addEventListener("click", async () => {
-        const want = input.value.trim();
-        save.disabled = true;
-        cancel.disabled = true;
-        status.textContent = "saving…";
-        status.className = "inference-config-status";
-        try {
-          const r = await fetch("/api/inference/config", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            credentials: "same-origin",
-            body: JSON.stringify({ clips_root: want }),
-          });
-          const text = await r.text();
-          let data = null;
-          try { data = JSON.parse(text); } catch {}
-          if (!r.ok) {
-            status.textContent = "✗ " + (data ? fmtErrDetail(data.detail, r.status) : (text || r.status));
-            status.classList.add("err");
-            save.disabled = false;
-            cancel.disabled = false;
-            return;
-          }
-          restore((data && data.clips_root) || want);
-        } catch (e) {
-          status.textContent = "✗ " + e;
-          status.classList.add("err");
-          save.disabled = false;
-          cancel.disabled = false;
-        }
+  async function kickAllReadersForJob(name) {
+    // Best-effort: when the user folds preview closed, mediamtx may take
+    // up to runOnDemandCloseAfter to release the worker. Explicitly
+    // kicking every webrtc/rtsp reader on the path makes the close
+    // immediate. Failures are silent — this is purely a cleanup nudge.
+    try {
+      await fetch(`/api/inference/jobs/${encodeURIComponent(name)}/kick`, {
+        method: "POST", credentials: "same-origin",
       });
-    });
+    } catch { /* ignore */ }
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    wireClipsRootEdit();
     // Populate model dropdowns on page load + wire backend-pill + chips.
     $$("[data-inf-form]").forEach(form => {
       refreshModelOptions(form);
@@ -458,12 +385,14 @@
           if (act === "events") loadEvents(card, name);
           if (act === "clips") loadClips(card, name);
         } else {
-          // Folding the preview closed must actually unload the iframe;
-          // otherwise the WebRTC/HLS reader stays subscribed and mediamtx
-          // never starts the runOnDemandCloseAfter countdown.
+          // Folding the preview closed must actually unload the iframe
+          // AND kick any webrtc/rtsp reader mediamtx may still hold —
+          // otherwise the worker keeps running until runOnDemandCloseAfter
+          // elapses (and a flaky ICE teardown can stretch that further).
           if (act === "preview") {
             const iframe = card.querySelector("[data-preview-frame]");
             if (iframe) iframe.src = "about:blank";
+            kickAllReadersForJob(name);
           }
           // Folding the Clips ▾ tab closed: tear down every inline clip
           // player so we stop pulling bytes and don't sit on multiple

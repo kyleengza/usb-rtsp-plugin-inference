@@ -9,13 +9,7 @@
     <span class="badge {% if inference_backends.cpu %}ok{% else %}err{% endif %}">
       CPU: {{ "available" if inference_backends.cpu else "no models on disk" }}
     </span>
-  </div>
-
-  <div class="inference-config">
-    <span class="muted">Clips root:</span>
-    <code data-clips-root-display>{{ inference_clips_root }}</code>
-    <button type="button" class="copy" data-edit-clips-root>edit</button>
-    <span class="muted small">subfolders are auto-created per job (cam0-ai/…, relay-front-ai/…)</span>
+    <span class="badge muted small">clip storage: <a href="/settings#plugin-inference">configure ↗</a></span>
   </div>
 
   {% if not inference_jobs %}

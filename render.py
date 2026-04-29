@@ -75,6 +75,9 @@ def build_paths(ctx) -> dict[str, Any]:
             # missing class). Restart accordingly.
             "runOnDemandRestart": j.backend == "hailo",
             "runOnDemandStartTimeout": "20s",
-            "runOnDemandCloseAfter": "10s",
+            # 2s grace after last reader leaves — short enough that
+            # folding the preview closed feels immediate, long enough
+            # that a quick page-reload doesn't double-spawn the worker.
+            "runOnDemandCloseAfter": "2s",
         }
     return paths
