@@ -35,6 +35,12 @@ def _load_raw() -> dict[str, Any]:
     return yaml.safe_load(REGISTRY_PATH.read_text()) or {}
 
 
+def _resolve_path(value: str) -> Path:
+    """Expand ~ in registry paths so models can live under the user's
+    cache dir without sudo (~/.cache/usb-rtsp/inference-models/...)."""
+    return Path(value).expanduser() if value else Path("")
+
+
 def _resolve_labels(raw: dict[str, Any], key: str) -> list[str]:
     labels = (raw.get("labels") or {}).get(key) or []
     return [str(x) for x in labels]
@@ -44,12 +50,10 @@ def hailo_models() -> list[HailoModel]:
     raw = _load_raw()
     out: list[HailoModel] = []
     for name, spec in (raw.get("hailo") or {}).items():
-        hef = Path(spec.get("hef", ""))
+        hef = _resolve_path(spec.get("hef", ""))
         if not hef.exists():
             continue
-        # post_so is informational — not required by the Python worker, but
-        # kept in the registry for any future gst-tappas backend.
-        post = Path(spec.get("post_so", ""))
+        post = _resolve_path(spec.get("post_so", ""))
         out.append(HailoModel(
             name=name, hef=hef, post_so=post,
             labels=_resolve_labels(raw, spec.get("labels", "coco")),
@@ -62,7 +66,7 @@ def cpu_models() -> list[CpuModel]:
     raw = _load_raw()
     out: list[CpuModel] = []
     for name, spec in (raw.get("cpu") or {}).items():
-        onnx = Path(spec.get("onnx", ""))
+        onnx = _resolve_path(spec.get("onnx", ""))
         if not onnx.exists():
             continue
         out.append(CpuModel(

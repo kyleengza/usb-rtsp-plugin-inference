@@ -1,12 +1,26 @@
 # Curated model registry. Resolved at runtime by models.py — backends list
-# only the entries whose files actually exist on disk. The bringup script
-# (kyleengza/pi-bringup → scripts/pi-bringup-inference.sh) installs the
-# Hailo .hef files via the apt `hailo-models` package and fetches the CPU
-# .onnx files into /var/cache/usb-rtsp/inference-models/.
+# only the entries whose files actually exist on disk.
+#
+# Hailo HEFs:
+#   - apt `hailo-models` package ships under /usr/share/hailo-models/
+#     (h8 + h8l variants). _h8 = compiled for full Hailo-8 (26 TOPS);
+#     _h8l = Hailo-8L (13 TOPS) — runs on h8 at reduced perf.
+#   - Larger HEFs not in apt are fetched by pi-bringup-inference.sh into
+#     ~/.cache/usb-rtsp/inference-models/ from Hailo's public Model Zoo
+#     mirror (https://hailo-csdata.s3.eu-west-2.amazonaws.com/...).
+#
+# CPU ONNX models: fetched by the same bringup script into the same
+# ~/.cache/usb-rtsp/inference-models/ directory.
 
 hailo:
-  # _h8 variants compiled for the full Hailo-8 device (26 TOPS); _h8l
-  # variants run too but at reduced perf with a runtime warning.
+  # yolov8m: ~26M params, listed first so new-job UX defaults to it.
+  # Bigger than yolov8s; ~2-3x more Hailo bandwidth per inference but
+  # noticeably more accurate on COCO. Fetched by bringup.
+  yolov8m:
+    hef: ~/.cache/usb-rtsp/inference-models/yolov8m_h8.hef
+    post_so: /usr/lib/aarch64-linux-gnu/hailo/tappas/post_processes/libyolo_hailortpp_post.so
+    labels: coco
+    fps_target: 30
   yolov8s:
     hef: /usr/share/hailo-models/yolov8s_h8.hef
     post_so: /usr/lib/aarch64-linux-gnu/hailo/tappas/post_processes/libyolo_hailortpp_post.so
@@ -20,11 +34,11 @@ hailo:
 
 cpu:
   yolov8n:
-    onnx: /var/cache/usb-rtsp/inference-models/yolov8n.onnx
+    onnx: ~/.cache/usb-rtsp/inference-models/yolov8n.onnx
     labels: coco
     fps_target: 8
   yolov8s:
-    onnx: /var/cache/usb-rtsp/inference-models/yolov8s.onnx
+    onnx: ~/.cache/usb-rtsp/inference-models/yolov8s.onnx
     labels: coco
     fps_target: 5
 
