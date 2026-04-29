@@ -25,6 +25,18 @@
     return `${(bytes/1024/1024/1024).toFixed(2)} GB`;
   }
 
+  function fmtStatus(j) {
+    if (!j.enabled) return ["disabled", "idle"];
+    const live = j._live;
+    if (!live) return ["idle", "idle"];
+    if (live.ready) {
+      const n = live.readers || 0;
+      return [`${n} viewer${n === 1 ? "" : "s"}`, "ok"];
+    }
+    if ((live.readers || 0) > 0) return ["upstream unreachable", "err"];
+    return ["idle (on-demand)", "idle"];
+  }
+
   async function refresh() {
     let data;
     try {
@@ -39,11 +51,7 @@
       const j = jobsByName.get(name);
       const statusEl = card.querySelector("[data-status]");
       if (!statusEl) return;
-      let text = "—", kind = "idle";
-      if (j) {
-        text = j.enabled ? "idle" : "disabled";
-        kind = "idle";
-      }
+      const [text, kind] = j ? fmtStatus(j) : ["—", "idle"];
       statusEl.textContent = text;
       statusEl.classList.remove("ok", "warn", "err", "idle");
       statusEl.classList.add(kind);

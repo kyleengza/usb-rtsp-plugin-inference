@@ -80,8 +80,17 @@ def make_router(ctx) -> APIRouter:
 
     @r.get("/state")
     def state() -> dict[str, Any]:
+        # Local import to avoid a circular at module load — __init__.py
+        # imports api.make_router.
+        from . import live_paths_state, _live_for_job
+        live = live_paths_state()
+        out_jobs = []
+        for j in jobs_mod.list_jobs(ctx):
+            item = jobs_mod.job_to_public_dict(j)
+            item["_live"] = _live_for_job(j.name, live)
+            out_jobs.append(item)
         return {
-            "jobs": [jobs_mod.job_to_public_dict(j) for j in jobs_mod.list_jobs(ctx)],
+            "jobs": out_jobs,
             "backends": {
                 "hailo": models_mod.has_backend("hailo"),
                 "cpu": models_mod.has_backend("cpu"),

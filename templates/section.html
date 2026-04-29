@@ -19,10 +19,19 @@
 
   {% for j in inference_jobs %}
   {% set is_disabled = not j.enabled %}
+  {% set live = j._live %}
   <article class="card{% if is_disabled %} input-disabled{% endif %}" data-inference-job="{{ j.name }}">
     <header>
       <h3>{{ j.name }}</h3>
-      <span class="cam-status idle" data-status>idle</span>
+      {% if live and live.ready %}
+        <span class="cam-status ok" data-status>{{ live.readers or 0 }} viewer{% if live.readers != 1 %}s{% endif %}</span>
+      {% elif live and live.readers and live.readers > 0 %}
+        <span class="cam-status err" data-status>upstream unreachable</span>
+      {% elif live %}
+        <span class="cam-status idle" data-status>idle (on-demand)</span>
+      {% else %}
+        <span class="cam-status idle" data-status>idle</span>
+      {% endif %}
       <span class="badge">{{ j.backend }} · {{ j.model }}</span>
       <label class="switch" title="enable / disable {{ j.name }}">
         <input type="checkbox" data-input-toggle="inference/{{ j.name }}" {% if not is_disabled %}checked{% endif %}>
