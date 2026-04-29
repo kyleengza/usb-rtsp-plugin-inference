@@ -44,6 +44,10 @@ class Job:
     # 100ms warm-up at 30fps; higher = even more confirmation, more lag
     # before the box first appears.
     min_hits: int = 3
+    # When True, mediamtx renders the path with runOnInit (worker
+    # always running). Default False (runOnDemand) keeps CPU/Hailo
+    # idle until a viewer subscribes.
+    always_on: bool = False
     clips: ClipsConfig = field(default_factory=ClipsConfig)
 
 
@@ -90,6 +94,7 @@ def _load_jobs(path: Path) -> list[Job]:
             inference_queue=int(entry.get("inference_queue", 5)),
             track_occlusion_s=float(entry.get("track_occlusion_s", 2.0)),
             min_hits=int(entry.get("min_hits", 3)),
+            always_on=bool(entry.get("always_on", False)),
             clips=clips,
         ))
     return out

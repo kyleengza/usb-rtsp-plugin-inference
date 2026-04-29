@@ -95,6 +95,11 @@
         <span>classes: {% if j.classes %}{{ j.classes|join(', ') }}{% else %}<em>all</em>{% endif %}</span>
         <span>· threshold: {{ j.threshold }}</span>
         <span>·</span>
+        <button type="button" class="clips-pill {% if j.always_on %}on{% else %}off{% endif %}"
+                data-always-on-toggle
+                title="background inference: when on, the worker runs continuously; when off, only while a viewer is connected">
+          background: <strong>{% if j.always_on %}on{% else %}off{% endif %}</strong>
+        </button>
         <button type="button" class="clips-pill {% if j.clips.enabled %}on{% else %}off{% endif %}"
                 data-clips-toggle title="click to toggle clip recording">
           clips: <strong>{% if j.clips.enabled %}on{% else %}off{% endif %}</strong>

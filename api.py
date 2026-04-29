@@ -60,7 +60,12 @@ class JobIn(BaseModel):
     inference_queue: int = Field(default=5, ge=0, le=60)
     track_occlusion_s: float = Field(default=2.0, ge=0.0, le=60.0)
     min_hits: int = Field(default=3, ge=1, le=30)
+    always_on: bool = False
     clips: ClipsIn = ClipsIn()
+
+
+class AlwaysOnIn(BaseModel):
+    enabled: bool
 
 
 def _to_job(j: JobIn) -> jobs_mod.Job:
@@ -75,6 +80,7 @@ def _to_job(j: JobIn) -> jobs_mod.Job:
         inference_queue=j.inference_queue,
         track_occlusion_s=j.track_occlusion_s,
         min_hits=j.min_hits,
+        always_on=j.always_on,
         clips=jobs_mod.ClipsConfig(
             enabled=j.clips.enabled,
             pre_roll_s=j.clips.pre_roll_s,
@@ -229,6 +235,21 @@ def make_router(ctx) -> APIRouter:
                 code, _ = api_post(f"/v3/{kind}/kick/{sid}")
                 kicked.append({"type": kind, "id": sid, "status": code, "stage": "transient"})
         return {"kicked": kicked, "count": len(kicked)}
+
+    @r.patch("/jobs/{name}/always-on")
+    def toggle_always_on(name: str, payload: AlwaysOnIn) -> dict[str, Any]:
+        """Quick on/off for background-inference mode. Updates always_on
+        in jobs.yml and bounces mediamtx so the path re-renders with
+        runOnInit (always_on=true) or runOnDemand (false)."""
+        j = jobs_mod.get_job(ctx, name)
+        if not j:
+            raise HTTPException(404, f"no such job: {name}")
+        j.always_on = bool(payload.enabled)
+        try:
+            saved = jobs_mod.update_job(ctx, name, j)
+        except jobs_mod.ValidationError as e:
+            raise HTTPException(400, str(e))
+        return {"job": jobs_mod.job_to_public_dict(saved), **_rerender_and_restart()}
 
     @r.patch("/jobs/{name}/clips")
     def toggle_clips(name: str, payload: ClipsToggleIn) -> dict[str, Any]:

@@ -270,6 +270,35 @@
     return String(d);
   }
 
+  async function toggleAlwaysOn(card, name, pill) {
+    if (pill.classList.contains("busy")) return;
+    const wantOn = pill.classList.contains("off");
+    pill.classList.add("busy");
+    try {
+      const r = await fetch(`/api/inference/jobs/${encodeURIComponent(name)}/always-on`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ enabled: wantOn }),
+      });
+      const text = await r.text();
+      let data = null;
+      try { data = JSON.parse(text); } catch {}
+      if (!r.ok) {
+        alert(`background toggle failed (HTTP ${r.status}): ${data ? fmtErrDetail(data.detail, r.status) : (text || r.status)}`);
+        return;
+      }
+      pill.classList.toggle("on", wantOn);
+      pill.classList.toggle("off", !wantOn);
+      const strong = pill.querySelector("strong");
+      if (strong) strong.textContent = wantOn ? "on" : "off";
+    } catch (e) {
+      alert(`background toggle error: ${e}`);
+    } finally {
+      pill.classList.remove("busy");
+    }
+  }
+
   async function toggleClips(card, name, pill) {
     if (pill.classList.contains("busy")) return;
     const wantOn = pill.classList.contains("off");
@@ -422,6 +451,14 @@
             $$("[data-clip-play].open", card).forEach(b => b.classList.remove("open"));
           }
         }
+        return;
+      }
+      // Quick background-mode on/off toggle in the meta row.
+      const aoPill = e.target.closest("[data-always-on-toggle]");
+      if (aoPill) {
+        const card = aoPill.closest("[data-inference-job]");
+        const name = card?.dataset.inferenceJob;
+        if (name) toggleAlwaysOn(card, name, aoPill);
         return;
       }
       // Quick clip on/off toggle in the meta row.

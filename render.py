@@ -68,17 +68,28 @@ def build_paths(ctx) -> dict[str, Any]:
             # remains in YAML but produces no path. UI surfaces this via
             # the backend-availability badge.
             continue
-        paths[j.name] = {
-            "source": "publisher",
-            "runOnDemand": _build_runondemand(j, clips_root),
-            # Hailo failures are usually transient (busy device, model
-            # reload); CPU failures are usually persistent (bad ONNX,
-            # missing class). Restart accordingly.
-            "runOnDemandRestart": j.backend == "hailo",
-            "runOnDemandStartTimeout": "20s",
-            # 2s grace after last reader leaves — short enough that
-            # folding the preview closed feels immediate, long enough
-            # that a quick page-reload doesn't double-spawn the worker.
-            "runOnDemandCloseAfter": "2s",
-        }
+        cmd = _build_runondemand(j, clips_root)
+        if j.always_on:
+            # Background mode — worker stays up regardless of viewers.
+            # Use runOnInit so mediamtx spawns at startup; restart on
+            # crash for both backends since we want continuous coverage.
+            paths[j.name] = {
+                "source": "publisher",
+                "runOnInit": cmd,
+                "runOnInitRestart": True,
+            }
+        else:
+            paths[j.name] = {
+                "source": "publisher",
+                "runOnDemand": cmd,
+                # Hailo failures are usually transient (busy device, model
+                # reload); CPU failures are usually persistent (bad ONNX,
+                # missing class). Restart accordingly.
+                "runOnDemandRestart": j.backend == "hailo",
+                "runOnDemandStartTimeout": "20s",
+                # 2s grace after last reader leaves — short enough that
+                # folding the preview closed feels immediate, long enough
+                # that a quick page-reload doesn't double-spawn the worker.
+                "runOnDemandCloseAfter": "2s",
+            }
     return paths
