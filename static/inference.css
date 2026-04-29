@@ -66,6 +66,12 @@
   font-family: inherit;
 }
 .class-chip:hover { color: var(--accent); border-color: var(--accent); }
+/* Mouse-click focus on a button stays in the browser's focus ring
+   even after click; with our accent palette the focus outline reads
+   as "lit up" alongside the actually-hovered chip. Suppress the
+   click-focus ring; keep keyboard a11y via :focus-visible only. */
+.class-chip:focus { outline: none; }
+.class-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .class-chip.selected {
   background: var(--accent);
   color: var(--panel);

@@ -386,6 +386,10 @@
           const chip = e.target.closest(".class-chip");
           if (!chip) return;
           chip.classList.toggle("selected");
+          // Drop the lingering button focus; otherwise the previously-
+          // clicked chip stays in the browser's :focus state and reads as
+          // "lit up" alongside whichever chip the cursor is actually over.
+          chip.blur();
         });
       }
       const clearBtn = form.querySelector("[data-chips-clear]");
