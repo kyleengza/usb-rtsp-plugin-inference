@@ -32,9 +32,14 @@
 }
 
 /* Inference form layout — relies on the existing .settings grid; just
-   adds explicit full-width slots for the wide fields. */
+   adds explicit full-width slots for the wide fields. align-items:
+   start so labels with <small> hint text don't push the bare-input
+   neighbours down (.settings uses end-alignment which makes mixed
+   heights look ragged). */
+.inference-form { align-items: start; }
 .inference-form .full { grid-column: 1 / -1; }
 .inference-form .full > input[type=text] { width: 100%; box-sizing: border-box; }
+.inference-form label > small { color: var(--muted); font-size: 0.7rem; line-height: 1.3; margin-top: 2px; }
 
 /* COCO class chips: one chip per label, click to toggle. Container
    wraps and scrolls so 80 chips don't blow the card height. */

@@ -156,11 +156,6 @@
           <small>min score to <em>keep</em> an existing track alive (0 = auto, ½ of threshold)</small>
         </label>
 
-        <label>Inference queue
-          <input type="number" name="inference_queue" min="0" max="60" step="1"
-                 value="{{ j.inference_queue }}">
-        </label>
-
         <label>Track occlusion (s)
           <input type="number" name="track_occlusion_s" min="0" max="60" step="0.5"
                  value="{{ j.track_occlusion_s }}">

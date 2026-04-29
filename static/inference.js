@@ -247,7 +247,10 @@
       classes: selectedChips(form),
       threshold: parseFloat(fd.get("threshold")) || 0.4,
       match_threshold: parseFloat(fd.get("match_threshold")) || 0.0,
-      inference_queue: parseInt(fd.get("inference_queue") || "5", 10),
+      // inference_queue field removed from the form: was wired to argparse
+      // but never actually consumed in the worker loop. Default 5 carried
+      // through for any pre-existing jobs.yml entries that still have it.
+      inference_queue: 5,
       track_occlusion_s: parseFloat(fd.get("track_occlusion_s")) || 2.0,
       min_hits: parseInt(fd.get("min_hits") || "3", 10),
       clips: {
