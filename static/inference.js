@@ -369,14 +369,16 @@
 
     refresh();
     setInterval(refresh, 5000);
-    // If any events/clips fold is open, refresh that one every 5s too.
+    // Events stream continuously while a worker is up — auto-refresh
+    // those while the fold is open. Clips list only changes on
+    // record/delete events that the user can trigger themselves; auto-
+    // refresh of clips would rebuild the tbody and destroy any open
+    // inline <video> player mid-playback. Refresh-on-open only.
     setInterval(() => {
       $$('article[data-inference-job]').forEach(card => {
         const name = card.dataset.inferenceJob;
         const evWrap = card.querySelector(".events-wrap");
         if (evWrap && !evWrap.hidden) loadEvents(card, name);
-        const clWrap = card.querySelector(".clips-wrap");
-        if (clWrap && !clWrap.hidden) loadClips(card, name);
       });
     }, 5000);
   });
