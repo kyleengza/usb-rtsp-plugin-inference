@@ -5,13 +5,15 @@
 # .onnx files into /var/cache/usb-rtsp/inference-models/.
 
 hailo:
+  # _h8 variants compiled for the full Hailo-8 device (26 TOPS); _h8l
+  # variants run too but at reduced perf with a runtime warning.
   yolov8s:
-    hef: /usr/share/hailo-models/yolov8s_h8l.hef
+    hef: /usr/share/hailo-models/yolov8s_h8.hef
     post_so: /usr/lib/aarch64-linux-gnu/hailo/tappas/post_processes/libyolo_hailortpp_post.so
     labels: coco
     fps_target: 30
   yolov6n:
-    hef: /usr/share/hailo-models/yolov6n_h8l.hef
+    hef: /usr/share/hailo-models/yolov6n_h8.hef
     post_so: /usr/lib/aarch64-linux-gnu/hailo/tappas/post_processes/libyolo_hailortpp_post.so
     labels: coco
     fps_target: 30
