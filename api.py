@@ -18,18 +18,72 @@ from . import clips as clips_mod
 from . import plugin_config
 
 
-def _rerender_and_restart() -> dict[str, Any]:
-    """Re-emit mediamtx.yml and bounce the mediamtx service so it picks
-    up new/changed paths. Mirrors the relay plugin's save flow."""
+def _rerender_yaml() -> tuple[bool, str]:
+    """Re-emit mediamtx.yml so a future service restart loads the
+    current config. Doesn't touch the running mediamtx — that's the
+    job of the per-path apply below."""
     p = subprocess.run(
         ["python3", "-m", "core.renderer"],
         cwd=str(REPO_DIR),
         capture_output=True, text=True, timeout=15,
     )
     if p.returncode != 0:
-        return {"render": "failed", "render_err": (p.stdout + p.stderr).strip()}
-    code, _ = systemctl("restart", "usb-rtsp")
-    return {"render": "ok", "restart": "ok" if code == 0 else "failed"}
+        return False, (p.stdout + p.stderr).strip()
+    return True, ""
+
+
+def _api_delete(path: str, timeout: float = 3.0) -> int:
+    """mediamtx HTTP DELETE — core.helpers only exposes GET/POST."""
+    import urllib.request, urllib.error
+    from core.helpers import MEDIAMTX_API
+    req = urllib.request.Request(f"{MEDIAMTX_API}{path}", method="DELETE")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status
+    except urllib.error.HTTPError as e:
+        return e.code
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return 0
+
+
+def _apply_job_to_mediamtx(ctx, name: str) -> dict[str, Any]:
+    """Push a single inference job's path config into the running
+    mediamtx via /v3/config/paths/replace/{name}. Replaces our previous
+    "rerender + systemctl restart" approach which killed every session
+    across every path. Now only the affected path bounces — RTSP / HLS /
+    WebRTC clients on other paths (cam0, relay sources) keep streaming.
+
+    Returns {"render": ..., "applied": ...} for the API response so the
+    JS toast can show what happened."""
+    ok, err = _rerender_yaml()
+    if not ok:
+        return {"render": "failed", "render_err": err}
+
+    from . import render as render_mod
+    paths = render_mod.build_paths(ctx)
+    cfg = paths.get(name)
+    if cfg is None:
+        # Job exists in jobs.yml but produces no path (disabled, model
+        # missing, etc.) — make sure mediamtx forgets any prior copy.
+        code = _api_delete(f"/v3/config/paths/delete/{name}")
+        return {"render": "ok", "applied": "removed" if code == 200 else
+                ("not_present" if code == 404 else f"delete_status_{code}")}
+
+    code, _ = api_post(f"/v3/config/paths/replace/{name}", body=cfg)
+    if 200 <= code < 300:
+        return {"render": "ok", "applied": "patched"}
+    return {"render": "ok", "applied": f"replace_status_{code}"}
+
+
+def _remove_job_from_mediamtx(name: str) -> dict[str, Any]:
+    """Companion for job deletion: drops the path from running mediamtx
+    and rewrites mediamtx.yml so a future restart matches."""
+    ok, err = _rerender_yaml()
+    if not ok:
+        return {"render": "failed", "render_err": err}
+    code = _api_delete(f"/v3/config/paths/delete/{name}")
+    return {"render": "ok", "applied": "removed" if code == 200 else
+            ("not_present" if code == 404 else f"delete_status_{code}")}
 
 
 class ClipsIn(BaseModel):
@@ -146,13 +200,20 @@ def make_router(ctx) -> APIRouter:
             new_root = plugin_config.set_clips_root(ctx, payload.clips_root)
         except ValueError as e:
             raise HTTPException(400, str(e))
-        # Re-render only — no service bounce. Worker only reads
-        # --clips-root at next on-demand spawn; existing clips at the
-        # old root remain there (manual move if you want them in the
-        # new tree).
-        from .api import _rerender_and_restart  # safe self-import
-        result = _rerender_and_restart()
-        return {"clips_root": str(new_root), **result}
+        # clips_root affects every job's runOnDemand command (the
+        # --clips-root arg). Re-render YAML and patch every active
+        # path so workers spawned next pick up the new path. Existing
+        # clips at the old root stay where they are.
+        ok, err = _rerender_yaml()
+        if not ok:
+            return {"clips_root": str(new_root), "render": "failed", "render_err": err}
+        from . import render as render_mod
+        paths = render_mod.build_paths(ctx)
+        applied = []
+        for name, cfg in paths.items():
+            code, _ = api_post(f"/v3/config/paths/replace/{name}", body=cfg)
+            applied.append({"name": name, "status": code})
+        return {"clips_root": str(new_root), "render": "ok", "applied": applied}
 
     @r.get("/models")
     def list_models() -> dict[str, Any]:
@@ -185,7 +246,8 @@ def make_router(ctx) -> APIRouter:
             saved = jobs_mod.add_job(ctx, _to_job(payload))
         except jobs_mod.ValidationError as e:
             raise HTTPException(400, str(e))
-        return {"job": jobs_mod.job_to_public_dict(saved), **_rerender_and_restart()}
+        return {"job": jobs_mod.job_to_public_dict(saved),
+                **_apply_job_to_mediamtx(ctx, saved.name)}
 
     @r.put("/jobs/{name}")
     def update(name: str, payload: JobIn) -> dict[str, Any]:
@@ -195,13 +257,14 @@ def make_router(ctx) -> APIRouter:
             raise HTTPException(404, f"no such job: {name}")
         except jobs_mod.ValidationError as e:
             raise HTTPException(400, str(e))
-        return {"job": jobs_mod.job_to_public_dict(saved), **_rerender_and_restart()}
+        return {"job": jobs_mod.job_to_public_dict(saved),
+                **_apply_job_to_mediamtx(ctx, saved.name)}
 
     @r.delete("/jobs/{name}")
     def remove(name: str) -> dict[str, Any]:
         if not jobs_mod.delete_job(ctx, name):
             raise HTTPException(404, f"no such job: {name}")
-        return {"ok": True, **_rerender_and_restart()}
+        return {"ok": True, **_remove_job_from_mediamtx(name)}
 
     @r.post("/jobs/{name}/kick")
     def kick_readers(name: str) -> dict[str, Any]:
@@ -260,8 +323,9 @@ def make_router(ctx) -> APIRouter:
     @r.patch("/jobs/{name}/always-on")
     def toggle_always_on(name: str, payload: AlwaysOnIn) -> dict[str, Any]:
         """Quick on/off for background-inference mode. Updates always_on
-        in jobs.yml and bounces mediamtx so the path re-renders with
-        runOnInit (always_on=true) or runOnDemand (false)."""
+        in jobs.yml and re-applies just this path's config (runOnInit
+        for always-on, runOnDemand otherwise). Only the affected worker
+        bounces; every other path's clients keep streaming."""
         j = jobs_mod.get_job(ctx, name)
         if not j:
             raise HTTPException(404, f"no such job: {name}")
@@ -270,15 +334,15 @@ def make_router(ctx) -> APIRouter:
             saved = jobs_mod.update_job(ctx, name, j)
         except jobs_mod.ValidationError as e:
             raise HTTPException(400, str(e))
-        return {"job": jobs_mod.job_to_public_dict(saved), **_rerender_and_restart()}
+        return {"job": jobs_mod.job_to_public_dict(saved),
+                **_apply_job_to_mediamtx(ctx, name)}
 
     @r.patch("/jobs/{name}/clips")
     def toggle_clips(name: str, payload: ClipsToggleIn) -> dict[str, Any]:
-        """Quick on/off for the per-job clip recorder. Updates clips.enabled
-        in jobs.yml and bounces mediamtx so the worker re-spawns with the
-        new config (mediamtx loads runOnDemand args from the rendered yml
-        at start, so a path-only restart isn't enough — we have to bounce
-        the service)."""
+        """Quick on/off for the per-job clip recorder. Updates
+        clips.enabled in jobs.yml and re-applies just THIS path's
+        config to mediamtx — only the affected worker bounces; every
+        other path's clients keep streaming."""
         j = jobs_mod.get_job(ctx, name)
         if not j:
             raise HTTPException(404, f"no such job: {name}")
@@ -287,7 +351,8 @@ def make_router(ctx) -> APIRouter:
             saved = jobs_mod.update_job(ctx, name, j)
         except jobs_mod.ValidationError as e:
             raise HTTPException(400, str(e))
-        return {"job": jobs_mod.job_to_public_dict(saved), **_rerender_and_restart()}
+        return {"job": jobs_mod.job_to_public_dict(saved),
+                **_apply_job_to_mediamtx(ctx, name)}
 
     @r.get("/jobs/{name}/events")
     def job_events(name: str, n: int = 100) -> dict[str, Any]:
