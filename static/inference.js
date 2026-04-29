@@ -386,13 +386,24 @@
           if (act === "events") loadEvents(card, name);
           if (act === "clips") loadClips(card, name);
         } else {
-          // Folding the preview closed must actually unload the iframe
-          // AND kick any webrtc/rtsp reader mediamtx may still hold —
-          // otherwise the worker keeps running until runOnDemandCloseAfter
-          // elapses (and a flaky ICE teardown can stretch that further).
+          // Folding preview closed: src=about:blank on its own isn't
+          // enough — Firefox's bfcache keeps the iframe's WebRTC client
+          // alive in the background, and its built-in retry timer
+          // re-fires WHEP every few seconds (visible as fresh
+          // 127.0.0.1:<port> session creations in mediamtx logs even
+          // after the worker has fully stopped). Replacing the iframe
+          // element entirely severs that. Also kick mediamtx-side
+          // readers so closeAfter starts immediately.
           if (act === "preview") {
             const iframe = card.querySelector("[data-preview-frame]");
-            if (iframe) iframe.src = "about:blank";
+            if (iframe) {
+              const fresh = document.createElement("iframe");
+              fresh.setAttribute("data-preview-frame", "");
+              fresh.setAttribute("loading", "lazy");
+              fresh.setAttribute("allow", "autoplay 'src'");
+              fresh.setAttribute("allowfullscreen", "");
+              iframe.replaceWith(fresh);
+            }
             kickAllReadersForJob(name);
           }
           // Folding the Clips ▾ tab closed: tear down every inline clip
