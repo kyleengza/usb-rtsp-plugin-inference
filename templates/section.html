@@ -29,6 +29,8 @@
         <span class="slider"></span>
       </label>
       <div class="card-tabs">
+        <button type="button" class="card-tab" data-act="events">Events ▾</button>
+        <button type="button" class="card-tab" data-act="clips">Clips ▾</button>
         <button type="button" class="card-tab" data-act="settings">Settings ▾</button>
         <button type="button" class="card-tab" data-act="delete-job">Remove</button>
       </div>
@@ -41,8 +43,20 @@
         · clips: {{ "on" if j.clips.enabled else "off" }}
       </div>
     </div>
+    <div class="events-wrap" hidden>
+      <table class="streams" data-events-table>
+        <thead><tr><th>when</th><th>kind</th><th>track</th><th>label</th><th>score</th></tr></thead>
+        <tbody><tr class="empty"><td colspan="5">no events recorded</td></tr></tbody>
+      </table>
+    </div>
+    <div class="clips-wrap" hidden>
+      <table class="streams" data-clips-table>
+        <thead><tr><th>file</th><th>size</th><th>when</th><th></th></tr></thead>
+        <tbody><tr class="empty"><td colspan="4">no clips recorded</td></tr></tbody>
+      </table>
+    </div>
     <div class="settings-wrap" hidden>
-      <p class="empty">Job CRUD form lands in the next slice. For now edit
+      <p class="empty">Job CRUD form lands in a later slice. For now edit
         <code>~/.config/usb-rtsp/inference/jobs.yml</code> and restart the admin.</p>
     </div>
   </article>
