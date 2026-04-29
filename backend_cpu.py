@@ -41,7 +41,12 @@ class CpuBackend:
         # encode + frame I/O. Pi 5 has 4 cores; onnxruntime defaulting to
         # 4 inter-op threads steals from encoder.
         sess_opts = ort.SessionOptions()
-        sess_opts.intra_op_num_threads = 2
+        # Pi 5 has 4 cores. 3 leaves the encoder + frame I/O 1 core to
+        # itself; using all 4 actually regresses (context-switch
+        # contention with ffmpeg). Bench numbers (yolo11n):
+        #   threads=2 → 460 ms / 207 ms / 104 ms @ 640/416/320
+        #   threads=3 → 170 ms /  68 ms /  41 ms @ 640/416/320  ← ~3× faster
+        sess_opts.intra_op_num_threads = 3
         sess_opts.inter_op_num_threads = 1
         self.session = ort.InferenceSession(
             str(onnx_path),

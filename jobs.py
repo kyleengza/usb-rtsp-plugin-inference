@@ -42,6 +42,12 @@ class Job:
     # can keep a confirmed track alive (defeats brief confidence dips).
     # 0.0 = auto-derive as max(0.05, threshold * 0.5) in the worker.
     match_threshold: float = 0.0
+    # CPU backend only: input resolution. 640 = native training size
+    # (best accuracy, slowest). 416 ≈ 2× faster, 320 ≈ 4× faster.
+    # Hailo backend ignores this — its HEFs are baked at 640×640.
+    # Bench (yolo11n on Pi 5 CPU, threads=3):
+    #   640: ~6 fps    416: ~15 fps    320: ~24 fps
+    cpu_input_size: int = 640
     inference_queue: int = 5
     track_occlusion_s: float = 2.0
     # Frames a new track must match before it gets drawn ("banding"). 1 =
@@ -97,6 +103,7 @@ def _load_jobs(path: Path) -> list[Job]:
             classes=[str(x) for x in (entry.get("classes") or [])],
             threshold=float(entry.get("threshold", 0.4)),
             match_threshold=float(entry.get("match_threshold", 0.0)),
+            cpu_input_size=int(entry.get("cpu_input_size", 640)),
             inference_queue=int(entry.get("inference_queue", 5)),
             track_occlusion_s=float(entry.get("track_occlusion_s", 2.0)),
             min_hits=int(entry.get("min_hits", 3)),
@@ -136,6 +143,8 @@ def _validate(j: Job, existing_names: set[str], *, allow_existing: str | None = 
         raise ValidationError("match_threshold must be in [0, 1]")
     if j.match_threshold > 0 and j.match_threshold > j.threshold:
         raise ValidationError("match_threshold must be ≤ threshold (or 0 for auto)")
+    if j.cpu_input_size not in (320, 416, 640):
+        raise ValidationError("cpu_input_size must be 320, 416, or 640")
     if j.inference_queue < 0 or j.inference_queue > 60:
         raise ValidationError("inference_queue must be in [0, 60]")
     if j.track_occlusion_s < 0 or j.track_occlusion_s > 60:

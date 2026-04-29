@@ -138,11 +138,13 @@ def make_backend(args, labels: list[str]):
     if args.backend == "cpu":
         from backend_cpu import CpuBackend  # type: ignore
         allow = _resolve_class_ids(labels, args.classes)
+        sz = int(getattr(args, "cpu_input_size", 640))
         return CpuBackend(
             onnx_path=Path(args.model_path),
             labels=labels,
             threshold=match_thr,
             allow_class_ids=allow,
+            input_size=(sz, sz),
         )
     raise ValueError(f"unknown backend: {args.backend}")
 
@@ -202,6 +204,8 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--match-threshold", type=float, default=0.0,
                     help="lower threshold for matching existing tracks; "
                          "0 = auto = max(0.05, threshold * 0.5)")
+    ap.add_argument("--cpu-input-size", type=int, default=640,
+                    help="CPU backend only: ONNX input HxW (320/416/640)")
     ap.add_argument("--classes", default="")
     ap.add_argument("--inference-queue", type=int, default=5)
     ap.add_argument("--track-occlusion-s", type=float, default=2.0)

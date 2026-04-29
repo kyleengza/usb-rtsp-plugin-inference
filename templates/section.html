@@ -162,6 +162,15 @@
           <small>seconds of no match before a track is dropped (≈ s × source fps frames)</small>
         </label>
 
+        <label>CPU input size
+          <select name="cpu_input_size">
+            <option value="640" {% if j.cpu_input_size == 640 %}selected{% endif %}>640 (native, ~6 fps)</option>
+            <option value="416" {% if j.cpu_input_size == 416 %}selected{% endif %}>416 (~14 fps)</option>
+            <option value="320" {% if j.cpu_input_size == 320 %}selected{% endif %}>320 (~24 fps)</option>
+          </select>
+          <small>CPU backend only — Hailo HEFs are pinned at 640×640</small>
+        </label>
+
         <label>Min hits
           <input type="number" name="min_hits" min="1" max="30" step="1"
                  value="{{ j.min_hits }}">
