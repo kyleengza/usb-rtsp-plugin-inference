@@ -261,6 +261,14 @@
     }
   }
 
+  function fmtErrDetail(d, fallback) {
+    if (d == null) return String(fallback);
+    if (typeof d === "string") return d;
+    if (Array.isArray(d)) return d.map(x => x?.msg || JSON.stringify(x)).join("; ");
+    if (typeof d === "object") return d.msg || JSON.stringify(d);
+    return String(d);
+  }
+
   async function toggleClips(card, name, pill) {
     if (pill.classList.contains("busy")) return;
     const wantOn = pill.classList.contains("off");
@@ -272,9 +280,12 @@
         credentials: "same-origin",
         body: JSON.stringify({ enabled: wantOn }),
       });
+      const text = await r.text();
+      let data = null;
+      try { data = JSON.parse(text); } catch {}
       if (!r.ok) {
-        const data = await r.json().catch(() => ({}));
-        alert(`toggle failed: ${data.detail || r.status}`);
+        const msg = data ? fmtErrDetail(data.detail, r.status) : (text || r.status);
+        alert(`toggle failed (HTTP ${r.status}): ${msg}`);
         return;
       }
       pill.classList.toggle("on", wantOn);

@@ -40,6 +40,10 @@ class ClipsIn(BaseModel):
     retention_count: int = Field(default=100, ge=1, le=10000)
 
 
+class ClipsToggleIn(BaseModel):
+    enabled: bool
+
+
 class JobIn(BaseModel):
     name: str
     upstream: str
@@ -145,9 +149,6 @@ def make_router(ctx) -> APIRouter:
         if not jobs_mod.delete_job(ctx, name):
             raise HTTPException(404, f"no such job: {name}")
         return {"ok": True, **_rerender_and_restart()}
-
-    class ClipsToggleIn(BaseModel):
-        enabled: bool
 
     @r.patch("/jobs/{name}/clips")
     def toggle_clips(name: str, payload: ClipsToggleIn) -> dict[str, Any]:
