@@ -1,3 +1,4 @@
+<link rel="stylesheet" href="/static/inference/inference.css">
 <section class="inference" data-plugin="inference">
   <h2>Inference</h2>
 
@@ -107,36 +108,32 @@
       </table>
     </div>
     <div class="settings-wrap" hidden>
-      <form class="settings" data-inf-form="{{ j.name }}">
+      <form class="settings inference-form" data-inf-form="{{ j.name }}">
         <input type="hidden" name="name" value="{{ j.name }}">
+        <input type="hidden" name="backend" value="{{ j.backend }}">
 
-        <label>Backend
-          <select name="backend">
-            <option value="hailo" {% if j.backend == 'hailo' %}selected{% endif %}>Hailo (accelerator)</option>
-            <option value="cpu"   {% if j.backend == 'cpu'   %}selected{% endif %}>CPU (onnxruntime)</option>
-          </select>
+        <label class="full">Backend
+          <div class="backend-pill" data-backend-pill>
+            <button type="button" data-backend="hailo"
+                    class="{% if j.backend == 'hailo' %}active{% endif %}">Hailo · YOLO</button>
+            <button type="button" data-backend="cpu"
+                    class="{% if j.backend == 'cpu' %}active{% endif %}">CPU · ONNX</button>
+          </div>
+        </label>
+
+        <label class="full">Upstream URL
+          <input type="text" name="upstream" value="{{ j.upstream }}" required>
         </label>
 
         <label>Model
           <select name="model" data-current="{{ j.model }}">
             <option value="{{ j.model }}" selected>{{ j.model }} (current)</option>
           </select>
-          <small>options are loaded for the chosen backend</small>
-        </label>
-
-        <label>Upstream URL
-          <input type="text" name="upstream" value="{{ j.upstream }}" required>
         </label>
 
         <label>Threshold
           <input type="number" name="threshold" min="0" max="1" step="0.05"
                  value="{{ j.threshold }}">
-        </label>
-
-        <label>Class filter
-          <input type="text" name="classes" value="{{ j.classes|join(',') }}"
-                 placeholder="(empty = all 80 COCO classes)">
-          <small>comma-separated; e.g. <code>person,car,dog</code></small>
         </label>
 
         <label>Inference queue
@@ -149,7 +146,20 @@
                  value="{{ j.track_occlusion_s }}">
         </label>
 
-        <details class="advanced" {% if j.clips.enabled %}open{% endif %} style="grid-column: 1/-1">
+        <label class="full">Class filter
+          <div class="class-chips" data-class-chips>
+            {% for cls in inference_coco_labels %}
+            <button type="button" class="class-chip{% if cls in j.classes %} selected{% endif %}"
+                    data-class="{{ cls }}">{{ cls }}</button>
+            {% endfor %}
+          </div>
+          <div class="class-chips-controls">
+            <button type="button" data-chips-clear>clear</button>
+            <small>click to toggle · empty = all {{ inference_coco_labels|length }} COCO classes</small>
+          </div>
+        </label>
+
+        <details class="advanced full" {% if j.clips.enabled %}open{% endif %}>
           <summary>Clip recording ▾</summary>
           <div class="advanced-grid">
             <label class="adv">
@@ -162,7 +172,7 @@
             </label>
             <label class="adv">Trigger
               <select name="clip_trigger">
-                <option value="track_enter"   {% if j.clips.trigger == 'track_enter'   %}selected{% endif %}>track_enter (one clip per object)</option>
+                <option value="track_enter"   {% if j.clips.trigger == 'track_enter'   %}selected{% endif %}>track_enter (one window per activity burst)</option>
                 <option value="any_detection" {% if j.clips.trigger == 'any_detection' %}selected{% endif %}>any_detection</option>
                 <option value="class_filter"  {% if j.clips.trigger == 'class_filter'  %}selected{% endif %}>class_filter</option>
               </select>
@@ -182,7 +192,7 @@
         <div class="actions">
           <button type="submit">Save &amp; reload</button>
         </div>
-        <div class="form-status" data-form-status></div>
+        <div class="form-status full" data-form-status></div>
       </form>
     </div>
   </article>

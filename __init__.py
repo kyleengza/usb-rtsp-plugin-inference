@@ -82,4 +82,5 @@ def section_context(ctx, request) -> dict:
             "hailo": models_mod.has_backend("hailo"),
             "cpu": models_mod.has_backend("cpu"),
         },
+        "inference_coco_labels": models_mod.all_labels("coco"),
     }

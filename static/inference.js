@@ -156,7 +156,8 @@
   }
 
   async function refreshModelOptions(form) {
-    const backend = form.querySelector("[name=backend]").value;
+    const backendInput = form.querySelector("input[name=backend]");
+    const backend = backendInput ? backendInput.value : "hailo";
     const sel = form.querySelector("[name=model]");
     if (!sel) return;
     const current = sel.dataset.current || sel.value;
@@ -180,9 +181,12 @@
     if (kind) el.classList.add(kind);
   }
 
+  function selectedChips(form) {
+    return $$("[data-class-chips] .class-chip.selected", form).map(b => b.dataset.class);
+  }
+
   async function submitJob(form) {
     const fd = new FormData(form);
-    const classes_raw = String(fd.get("classes") || "").trim();
     const trig_classes_raw = String(fd.get("clip_trigger_classes") || "").trim();
     const payload = {
       name: fd.get("name"),
@@ -190,7 +194,7 @@
       enabled: true,  // toggled via the header switch, not this form
       backend: fd.get("backend"),
       model: fd.get("model"),
-      classes: classes_raw ? classes_raw.split(",").map(s => s.trim()).filter(Boolean) : [],
+      classes: selectedChips(form),
       threshold: parseFloat(fd.get("threshold")) || 0.4,
       inference_queue: parseInt(fd.get("inference_queue") || "5", 10),
       track_occlusion_s: parseFloat(fd.get("track_occlusion_s")) || 2.0,
@@ -224,14 +228,38 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    // Populate model dropdowns on page load + wire backend-toggle re-fetch.
+    // Populate model dropdowns on page load + wire backend-pill + chips.
     $$("[data-inf-form]").forEach(form => {
       refreshModelOptions(form);
-      form.querySelector("[name=backend]").addEventListener("change", () => {
-        const sel = form.querySelector("[name=model]");
-        if (sel) sel.dataset.current = sel.value;  // remember user's pick across backend swaps
-        refreshModelOptions(form);
-      });
+      const backendInput = form.querySelector("input[name=backend]");
+      const backendPill = form.querySelector("[data-backend-pill]");
+      if (backendPill) {
+        backendPill.addEventListener("click", e => {
+          const btn = e.target.closest("button[data-backend]");
+          if (!btn || btn.classList.contains("active")) return;
+          $$("button[data-backend]", backendPill).forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          if (backendInput) backendInput.value = btn.dataset.backend;
+          const modelSel = form.querySelector("[name=model]");
+          if (modelSel) modelSel.dataset.current = modelSel.value;  // remember last pick
+          refreshModelOptions(form);
+        });
+      }
+      // Class chip toggle.
+      const chips = form.querySelector("[data-class-chips]");
+      if (chips) {
+        chips.addEventListener("click", e => {
+          const chip = e.target.closest(".class-chip");
+          if (!chip) return;
+          chip.classList.toggle("selected");
+        });
+      }
+      const clearBtn = form.querySelector("[data-chips-clear]");
+      if (clearBtn) {
+        clearBtn.addEventListener("click", () => {
+          $$("[data-class-chips] .class-chip.selected", form).forEach(c => c.classList.remove("selected"));
+        });
+      }
       form.addEventListener("submit", e => {
         e.preventDefault();
         submitJob(form);

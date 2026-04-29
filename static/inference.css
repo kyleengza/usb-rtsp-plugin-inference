@@ -1,0 +1,84 @@
+/* Inference plugin styles. Loaded via <link> in section.html.
+   Keep in sync with the panel-wide chip pattern (.card-tab, .badge,
+   .host-toggle button) so it reads consistent. */
+
+/* Pill toggle for the backend choice — matches the host-toggle pill
+   row's vibe: muted-bordered container with one selected segment. */
+.backend-pill {
+  display: inline-flex;
+  align-items: stretch;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px;
+  gap: 2px;
+}
+.backend-pill button {
+  padding: 0.2rem 0.7rem;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+.backend-pill button:hover { color: var(--accent); }
+.backend-pill button.active {
+  background: var(--accent);
+  color: var(--panel);
+  font-weight: 600;
+}
+
+/* Inference form layout — relies on the existing .settings grid; just
+   adds explicit full-width slots for the wide fields. */
+.inference-form .full { grid-column: 1 / -1; }
+.inference-form .full > input[type=text] { width: 100%; box-sizing: border-box; }
+
+/* COCO class chips: one chip per label, click to toggle. Container
+   wraps and scrolls so 80 chips don't blow the card height. */
+.class-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 7.5em;
+  overflow-y: auto;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.class-chip {
+  font-size: 0.7rem;
+  line-height: 1;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+}
+.class-chip:hover { color: var(--accent); border-color: var(--accent); }
+.class-chip.selected {
+  background: var(--accent);
+  color: var(--panel);
+  border-color: var(--accent);
+}
+.class-chips-controls {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 4px;
+  font-size: 0.72rem;
+}
+.class-chips-controls button {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  text-decoration: underline;
+}
+.class-chips-controls button:hover { color: var(--accent); }
