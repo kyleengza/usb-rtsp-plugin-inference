@@ -146,6 +146,26 @@ def make_router(ctx) -> APIRouter:
             raise HTTPException(404, f"no such job: {name}")
         return {"ok": True, **_rerender_and_restart()}
 
+    class ClipsToggleIn(BaseModel):
+        enabled: bool
+
+    @r.patch("/jobs/{name}/clips")
+    def toggle_clips(name: str, payload: ClipsToggleIn) -> dict[str, Any]:
+        """Quick on/off for the per-job clip recorder. Updates clips.enabled
+        in jobs.yml and bounces mediamtx so the worker re-spawns with the
+        new config (mediamtx loads runOnDemand args from the rendered yml
+        at start, so a path-only restart isn't enough — we have to bounce
+        the service)."""
+        j = jobs_mod.get_job(ctx, name)
+        if not j:
+            raise HTTPException(404, f"no such job: {name}")
+        j.clips.enabled = bool(payload.enabled)
+        try:
+            saved = jobs_mod.update_job(ctx, name, j)
+        except jobs_mod.ValidationError as e:
+            raise HTTPException(400, str(e))
+        return {"job": jobs_mod.job_to_public_dict(saved), **_rerender_and_restart()}
+
     @r.get("/jobs/{name}/events")
     def job_events(name: str, n: int = 100) -> dict[str, Any]:
         if not jobs_mod.get_job(ctx, name):

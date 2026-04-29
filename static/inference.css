@@ -82,3 +82,31 @@
   text-decoration: underline;
 }
 .class-chips-controls button:hover { color: var(--accent); }
+
+/* Quick clip-record toggle in the meta row. Reuses the chip pill
+   palette; on = accent-blue fill, off = muted outline. */
+.meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+.clips-pill {
+  font: inherit;
+  font-size: 0.74rem;
+  line-height: 1;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+}
+.clips-pill:hover { border-color: var(--accent); color: var(--accent); }
+.clips-pill.on {
+  background: var(--accent);
+  color: var(--panel);
+  border-color: var(--accent);
+}
+.clips-pill.off { color: var(--muted); }
+.clips-pill.busy { opacity: 0.6; pointer-events: none; }

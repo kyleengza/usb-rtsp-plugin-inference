@@ -261,6 +261,33 @@
     }
   }
 
+  async function toggleClips(card, name, pill) {
+    if (pill.classList.contains("busy")) return;
+    const wantOn = pill.classList.contains("off");
+    pill.classList.add("busy");
+    try {
+      const r = await fetch(`/api/inference/jobs/${encodeURIComponent(name)}/clips`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ enabled: wantOn }),
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        alert(`toggle failed: ${data.detail || r.status}`);
+        return;
+      }
+      pill.classList.toggle("on", wantOn);
+      pill.classList.toggle("off", !wantOn);
+      const strong = pill.querySelector("strong");
+      if (strong) strong.textContent = wantOn ? "on" : "off";
+    } catch (e) {
+      alert(`toggle error: ${e}`);
+    } finally {
+      pill.classList.remove("busy");
+    }
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
     // Populate model dropdowns on page load + wire backend-pill + chips.
     $$("[data-inf-form]").forEach(form => {
@@ -358,6 +385,14 @@
             $$("[data-clip-play].open", card).forEach(b => b.classList.remove("open"));
           }
         }
+        return;
+      }
+      // Quick clip on/off toggle in the meta row.
+      const clipsPill = e.target.closest("[data-clips-toggle]");
+      if (clipsPill) {
+        const card = clipsPill.closest("[data-inference-job]");
+        const name = card?.dataset.inferenceJob;
+        if (name) toggleClips(card, name, clipsPill);
         return;
       }
       // Per-clip delete button. Surgically remove just the deleted clip's

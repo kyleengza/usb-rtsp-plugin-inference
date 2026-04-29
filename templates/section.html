@@ -87,11 +87,17 @@
     </ul>
     </div>
     <div class="meta">
-      <div class="device">upstream: <code>{{ j.upstream }}</code></div>
-      <div>
-        classes: {% if j.classes %}{{ j.classes|join(', ') }}{% else %}<em>all</em>{% endif %}
-        · threshold: {{ j.threshold }}
-        · clips: {{ "on" if j.clips.enabled else "off" }}
+      <div class="device">
+        upstream: <code>{{ j.upstream }}</code>
+      </div>
+      <div class="meta-row">
+        <span>classes: {% if j.classes %}{{ j.classes|join(', ') }}{% else %}<em>all</em>{% endif %}</span>
+        <span>· threshold: {{ j.threshold }}</span>
+        <span>·</span>
+        <button type="button" class="clips-pill {% if j.clips.enabled %}on{% else %}off{% endif %}"
+                data-clips-toggle title="click to toggle clip recording">
+          clips: <strong>{% if j.clips.enabled %}on{% else %}off{% endif %}</strong>
+        </button>
       </div>
     </div>
     <div class="events-wrap" hidden>
