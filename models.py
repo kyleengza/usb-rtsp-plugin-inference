@@ -45,9 +45,11 @@ def hailo_models() -> list[HailoModel]:
     out: list[HailoModel] = []
     for name, spec in (raw.get("hailo") or {}).items():
         hef = Path(spec.get("hef", ""))
-        post = Path(spec.get("post_so", ""))
-        if not hef.exists() or not post.exists():
+        if not hef.exists():
             continue
+        # post_so is informational — not required by the Python worker, but
+        # kept in the registry for any future gst-tappas backend.
+        post = Path(spec.get("post_so", ""))
         out.append(HailoModel(
             name=name, hef=hef, post_so=post,
             labels=_resolve_labels(raw, spec.get("labels", "coco")),
