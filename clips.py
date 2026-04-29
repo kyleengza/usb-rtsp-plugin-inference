@@ -1,4 +1,4 @@
-"""Per-job clip recorder.
+"""Per-job clip recorder + read-side helpers.
 
 Single-clip-at-a-time. While ANY qualifying trigger event is active, one
 ffmpeg subprocess writes BGR frames to a timestamped mp4. The clip
@@ -180,6 +180,34 @@ class ClipRecorder:
             pass
 
 
+# Path → (mtime_at_probe, duration_s). Memoised so the API doesn't fork
+# a fresh ffprobe per file on every poll.
+_DURATION_CACHE: dict[str, tuple[float, float]] = {}
+
+
+def _clip_duration_s(p: Path, mtime: float) -> float | None:
+    """Return mp4 duration in seconds via ffprobe, cached by (path, mtime).
+    Returns None on any failure — callers should treat as 'unknown'."""
+    key = str(p)
+    cached = _DURATION_CACHE.get(key)
+    if cached is not None and cached[0] == mtime:
+        return cached[1]
+    try:
+        import subprocess
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=nw=1:nk=1", str(p)],
+            capture_output=True, text=True, timeout=4,
+        )
+        if r.returncode != 0:
+            return None
+        dur = float(r.stdout.strip())
+    except (ValueError, FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+    _DURATION_CACHE[key] = (mtime, dur)
+    return dur
+
+
 def list_clips(job_name: str) -> list[dict]:
     """Used by the API to render the clips list."""
     job_dir = CLIPS_ROOT / job_name
@@ -195,6 +223,7 @@ def list_clips(job_name: str) -> list[dict]:
             "name": p.name,
             "size_bytes": stat.st_size,
             "mtime": stat.st_mtime,
+            "duration_s": _clip_duration_s(p, stat.st_mtime),
         })
     return out
 

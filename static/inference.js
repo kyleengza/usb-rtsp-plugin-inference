@@ -25,6 +25,16 @@
     return `${(bytes/1024/1024/1024).toFixed(2)} GB`;
   }
 
+  function fmtDuration(s) {
+    if (s == null || isNaN(s) || s < 0) return "—";
+    const total = Math.round(s);
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const sec = total % 60;
+    if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+    return `${m}:${String(sec).padStart(2, "0")}`;
+  }
+
   function fmtStatus(j) {
     if (!j.enabled) return ["disabled", "idle"];
     const live = j._live;
@@ -103,7 +113,7 @@
         : "no clips";
     }
     if (!clips.length) {
-      tbody.innerHTML = `<tr class="empty"><td colspan="4">no clips recorded</td></tr>`;
+      tbody.innerHTML = `<tr class="empty"><td colspan="5">no clips recorded</td></tr>`;
       return;
     }
     tbody.innerHTML = clips.map(c => {
@@ -113,6 +123,7 @@
           <button type="button" class="copy" data-clip-play="${esc(c.name)}">▶</button>
           <code>${esc(c.name)}</code>
         </td>
+        <td>${esc(fmtDuration(c.duration_s))}</td>
         <td>${esc(fmtSize(c.size_bytes))}</td>
         <td>${esc(fmtAgo(c.mtime))}</td>
         <td>
@@ -121,7 +132,7 @@
         </td>
       </tr>
       <tr class="clip-player-row" data-clip-player-for="${esc(c.name)}" hidden>
-        <td colspan="4">
+        <td colspan="5">
           <video controls preload="none" style="width:100%;max-width:720px;background:#000"
                  src="${dl}"></video>
         </td>
