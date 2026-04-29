@@ -58,21 +58,36 @@ def open_upstream(url: str, timeout_s: float = 20.0) -> "cv2.VideoCapture":
 
 
 def spawn_ffmpeg(out_url: str, w: int, h: int, fps: int) -> subprocess.Popen:
+    """Encode-and-publish ffmpeg.
+
+    -use_wallclock_as_timestamps + -fflags +genpts: timestamp frames by
+    when they arrive, not by an assumed input rate. The CPU backend
+    drives 1-3 fps for yolo11s while the camera is 30 fps — we can't
+    pretend the input is 30 fps or PTS go off the rails.
+
+    -force_key_frames every 1 s of wall-clock so WebRTC viewers
+    actually see keyframes regardless of how slow inference runs. With
+    the previous -g 60 derived from source fps, a 1.5 fps inference
+    pipeline would key-frame every 40 s, well past WebRTC's
+    handshake/I-frame timeout — visible to the user as "no preview"
+    even though packets flow."""
     cmd = [
         "ffmpeg",
         "-hide_banner", "-loglevel", "warning",
+        "-use_wallclock_as_timestamps", "1",
+        "-fflags", "+genpts",
         "-f", "rawvideo", "-pix_fmt", "bgr24",
-        "-s", f"{w}x{h}", "-r", str(max(1, int(fps))),
+        "-s", f"{w}x{h}",
         "-i", "-",
         "-c:v", "libx264",
         "-preset", "ultrafast", "-tune", "zerolatency",
         "-pix_fmt", "yuv420p",
-        "-g", str(max(1, int(fps) * 2)),
+        "-force_key_frames", "expr:gte(t,n_forced*1)",
         "-an",
         "-f", "rtsp", "-rtsp_transport", "tcp",
         out_url,
     ]
-    log(f"spawn ffmpeg → {out_url} ({w}x{h}@{int(fps)})")
+    log(f"spawn ffmpeg → {out_url} ({w}x{h}, wallclock pts, key/1s)")
     return subprocess.Popen(cmd, stdin=subprocess.PIPE)
 
 
