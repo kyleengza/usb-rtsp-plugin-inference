@@ -101,8 +101,14 @@ def make_backend(args, labels: list[str]):
             allow_class_ids=allow,
         )
     if args.backend == "cpu":
-        # Slice 4 will replace this with backend_cpu.CpuBackend.
-        return None
+        from backend_cpu import CpuBackend  # type: ignore
+        allow = _resolve_class_ids(labels, args.classes)
+        return CpuBackend(
+            onnx_path=Path(args.model_path),
+            labels=labels,
+            threshold=args.threshold,
+            allow_class_ids=allow,
+        )
     raise ValueError(f"unknown backend: {args.backend}")
 
 
