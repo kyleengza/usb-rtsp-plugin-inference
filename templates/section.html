@@ -144,9 +144,16 @@
           </select>
         </label>
 
-        <label>Threshold
+        <label>Threshold (initial)
           <input type="number" name="threshold" min="0" max="1" step="0.05"
                  value="{{ j.threshold }}">
+          <small>min score to <em>spawn</em> a new track</small>
+        </label>
+
+        <label>Match threshold (lower)
+          <input type="number" name="match_threshold" min="0" max="1" step="0.05"
+                 value="{{ j.match_threshold }}">
+          <small>min score to <em>keep</em> an existing track alive (0 = auto, ½ of threshold)</small>
         </label>
 
         <label>Inference queue
@@ -157,6 +164,7 @@
         <label>Track occlusion (s)
           <input type="number" name="track_occlusion_s" min="0" max="60" step="0.5"
                  value="{{ j.track_occlusion_s }}">
+          <small>seconds of no match before a track is dropped (≈ s × source fps frames)</small>
         </label>
 
         <label>Min hits

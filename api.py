@@ -57,6 +57,7 @@ class JobIn(BaseModel):
     model: str = "yolov8s"
     classes: list[str] = []
     threshold: float = Field(default=0.4, ge=0.0, le=1.0)
+    match_threshold: float = Field(default=0.0, ge=0.0, le=1.0)
     inference_queue: int = Field(default=5, ge=0, le=60)
     track_occlusion_s: float = Field(default=2.0, ge=0.0, le=60.0)
     min_hits: int = Field(default=3, ge=1, le=30)
@@ -77,6 +78,7 @@ def _to_job(j: JobIn) -> jobs_mod.Job:
         model=j.model,
         classes=list(j.classes),
         threshold=j.threshold,
+        match_threshold=j.match_threshold,
         inference_queue=j.inference_queue,
         track_occlusion_s=j.track_occlusion_s,
         min_hits=j.min_hits,

@@ -40,6 +40,7 @@ def _build_runondemand(j: jobs_mod.Job, clips_root: str) -> str:
         "--model-path", model_path,
         "--job-name", j.name,
         "--threshold", f"{j.threshold:.3f}",
+        "--match-threshold", f"{j.match_threshold:.3f}",
         "--inference-queue", str(j.inference_queue),
         "--track-occlusion-s", f"{j.track_occlusion_s:.2f}",
         "--min-hits", str(j.min_hits),

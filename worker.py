@@ -97,16 +97,20 @@ def _resolve_class_ids(labels: list[str], names_csv: str) -> set[int] | None:
     return out
 
 
-def _match_threshold(register_threshold: float) -> float:
+def _match_threshold(register_threshold: float, override: float = 0.0) -> float:
     """The low floor passed to backends. Existing tracks can be matched
-    (and so survive a quick confidence dip) by any detection above this
+    (and so survive a brief confidence dip) by any detection above this
     value; new tracks still need ``register_threshold`` to spawn.
-    Half the user threshold, with a 0.05 floor to avoid pure noise."""
+    ``override`` (>0) lets the user pin an explicit floor; clamped at
+    register_threshold so it can't exceed the spawn cost. ``override=0``
+    falls back to the auto rule: half the user threshold, 0.05 floor."""
+    if override > 0:
+        return min(override, register_threshold)
     return max(0.05, register_threshold * 0.5)
 
 
 def make_backend(args, labels: list[str]):
-    match_thr = _match_threshold(args.threshold)
+    match_thr = _match_threshold(args.threshold, getattr(args, "match_threshold", 0.0))
     if args.backend == "hailo":
         from backend_hailo import HailoBackend  # type: ignore
         allow = _resolve_class_ids(labels, args.classes)
@@ -180,6 +184,9 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--model-path", required=True)
     ap.add_argument("--job-name", default="")
     ap.add_argument("--threshold", type=float, default=0.4)
+    ap.add_argument("--match-threshold", type=float, default=0.0,
+                    help="lower threshold for matching existing tracks; "
+                         "0 = auto = max(0.05, threshold * 0.5)")
     ap.add_argument("--classes", default="")
     ap.add_argument("--inference-queue", type=int, default=5)
     ap.add_argument("--track-occlusion-s", type=float, default=2.0)

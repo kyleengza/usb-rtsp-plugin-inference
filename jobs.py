@@ -37,6 +37,11 @@ class Job:
     model: str = "yolov8s"
     classes: list[str] = field(default_factory=list)
     threshold: float = 0.4
+    # Lower confidence floor used for matching detections to *existing*
+    # tracks. Detections below `threshold` but above `match_threshold`
+    # can keep a confirmed track alive (defeats brief confidence dips).
+    # 0.0 = auto-derive as max(0.05, threshold * 0.5) in the worker.
+    match_threshold: float = 0.0
     inference_queue: int = 5
     track_occlusion_s: float = 2.0
     # Frames a new track must match before it gets drawn ("banding"). 1 =
@@ -91,6 +96,7 @@ def _load_jobs(path: Path) -> list[Job]:
             model=str(entry.get("model", "yolov8s")),
             classes=[str(x) for x in (entry.get("classes") or [])],
             threshold=float(entry.get("threshold", 0.4)),
+            match_threshold=float(entry.get("match_threshold", 0.0)),
             inference_queue=int(entry.get("inference_queue", 5)),
             track_occlusion_s=float(entry.get("track_occlusion_s", 2.0)),
             min_hits=int(entry.get("min_hits", 3)),
@@ -126,6 +132,10 @@ def _validate(j: Job, existing_names: set[str], *, allow_existing: str | None = 
         raise ValidationError("refusing self-loop (upstream cannot be this job's own output)")
     if not (0.0 <= j.threshold <= 1.0):
         raise ValidationError("threshold must be in [0, 1]")
+    if not (0.0 <= j.match_threshold <= 1.0):
+        raise ValidationError("match_threshold must be in [0, 1]")
+    if j.match_threshold > 0 and j.match_threshold > j.threshold:
+        raise ValidationError("match_threshold must be ≤ threshold (or 0 for auto)")
     if j.inference_queue < 0 or j.inference_queue > 60:
         raise ValidationError("inference_queue must be in [0, 60]")
     if j.track_occlusion_s < 0 or j.track_occlusion_s > 60:
