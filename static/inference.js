@@ -74,6 +74,10 @@
       statusEl.textContent = text;
       statusEl.classList.remove("ok", "warn", "err", "idle");
       statusEl.classList.add(kind);
+      // Backend·model badge — saved-side updates need to reflect here
+      // without a full page reload (toggle pill, settings save).
+      const badgeEl = card.querySelector("[data-backend-badge]");
+      if (badgeEl && j) badgeEl.textContent = `${j.backend} · ${j.model}`;
       // Per-worker performance line (FPS + inference latency).
       const perfEl = card.querySelector("[data-perf]");
       if (perfEl) {

@@ -34,7 +34,7 @@
       {% else %}
         <span class="cam-status idle" data-status>idle</span>
       {% endif %}
-      <span class="badge">{{ j.backend }} · {{ j.model }}</span>
+      <span class="badge" data-backend-badge>{{ j.backend }} · {{ j.model }}</span>
       <label class="switch" title="enable / disable {{ j.name }}">
         <input type="checkbox" data-input-toggle="inference/{{ j.name }}" {% if not is_disabled %}checked{% endif %}>
         <span class="slider"></span>
