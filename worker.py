@@ -40,6 +40,63 @@ def log(msg: str) -> None:
     print(f"[inference-worker] {msg}", file=sys.stderr, flush=True)
 
 
+class LatestFrameReader:
+    """Decouples cv2.VideoCapture's read cadence from the inference loop.
+
+    cv2 / ffmpeg buffer N frames internally; cap.read() returns the
+    OLDEST first, so when inference is slower than source FPS the
+    backlog builds up and the displayed stream lags by however much
+    inference fell behind. This reader thread continuously drains the
+    capture into a 1-slot box; the inference loop pulls the latest
+    frame and any older ones are silently dropped. Result: no
+    accumulating lag, just real-time-with-skipped-frames when CPU
+    can't keep up."""
+
+    def __init__(self, cap: "cv2.VideoCapture") -> None:
+        import threading
+        self.cap = cap
+        self._lock = threading.Lock()
+        self._latest = None
+        self._dropped = 0
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+
+    def _loop(self) -> None:
+        while not self._stop.is_set():
+            ok, frame = self.cap.read()
+            if not ok:
+                time.sleep(0.01)
+                continue
+            with self._lock:
+                if self._latest is not None:
+                    self._dropped += 1
+                self._latest = frame
+
+    def get(self, timeout_s: float = 1.0):
+        """Return the latest frame and reset the slot. Returns None if
+        no frame arrives within ``timeout_s``."""
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            with self._lock:
+                f = self._latest
+                self._latest = None
+                if f is not None:
+                    return f
+            time.sleep(0.003)
+        return None
+
+    def reset_dropped(self) -> int:
+        with self._lock:
+            n = self._dropped
+            self._dropped = 0
+        return n
+
+    def close(self) -> None:
+        self._stop.set()
+        self._thread.join(timeout=2)
+
+
 def open_upstream(url: str, timeout_s: float = 20.0) -> "cv2.VideoCapture":
     deadline = time.monotonic() + timeout_s
     last_err = ""
@@ -247,6 +304,7 @@ def main() -> int:
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 720
     src_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     fps_int = max(1, int(round(src_fps)))
+    reader = LatestFrameReader(cap)
 
     ff = spawn_ffmpeg(args.output, w, h, fps_int)
 
@@ -281,9 +339,8 @@ def main() -> int:
     stats_path = stats_dir / f"{args.job_name or 'unnamed'}.json"
     try:
         while not stop["flag"]:
-            ok, frame = cap.read()
-            if not ok:
-                time.sleep(0.05)
+            frame = reader.get(timeout_s=1.0)
+            if frame is None:
                 continue
             ts = time.time()
             inf_t0 = time.perf_counter()
@@ -327,8 +384,10 @@ def main() -> int:
                 fps_observed = frames_pushed / window_s
                 avg_inf_ms = (inference_ms_sum / inference_count) if inference_count else 0.0
                 dets_per_min = (dets_in_window / window_s) * 60.0
+                dropped = reader.reset_dropped()
                 log(f"alive · {frames_pushed} frames in {window_s:.1f}s "
                     f"({fps_observed:.1f} fps) · {avg_inf_ms:.1f}ms inf · "
+                    f"{dropped} frames dropped (cull) · "
                     f"{last_det_count} dets last frame")
                 # Persist stats so the panel can render them per-job.
                 try:
@@ -360,6 +419,10 @@ def main() -> int:
                 pass
         try:
             backend.close()
+        except Exception:
+            pass
+        try:
+            reader.close()
         except Exception:
             pass
         try:
