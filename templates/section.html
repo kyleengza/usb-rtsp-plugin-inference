@@ -1,26 +1,52 @@
 <section class="inference" data-plugin="inference">
   <h2>Inference</h2>
 
-  <div class="inference-status" id="inference-status">
-    <span class="badge" id="inference-buf">events: 0</span>
-    <span class="badge" id="inference-rate">no recent events</span>
-    <a href="https://github.com/" id="inference-contract">CONTRACT.md</a>
+  <div class="inference-backends">
+    <span class="badge {% if inference_backends.hailo %}ok{% else %}err{% endif %}">
+      Hailo: {{ "available" if inference_backends.hailo else "no models on disk" }}
+    </span>
+    <span class="badge {% if inference_backends.cpu %}ok{% else %}err{% endif %}">
+      CPU: {{ "available" if inference_backends.cpu else "no models on disk" }}
+    </span>
   </div>
 
-  <div class="inference-empty" id="inference-empty">
+  {% if not inference_jobs %}
     <p class="empty">
-      No detection events yet. Configure your inference producer to POST to
-      <code>/api/inference/events</code> on this host.
-      See <a href="/static/inference/CONTRACT.md">CONTRACT.md</a>.
+      No inference jobs configured. Add one from the
+      <a href="/settings#plugin-inference">Settings → inference</a> page.
     </p>
-  </div>
+  {% endif %}
 
-  <table class="streams" id="inference-table" hidden>
-    <thead>
-      <tr><th>when</th><th>path</th><th>label</th><th>conf</th><th>bbox</th></tr>
-    </thead>
-    <tbody id="inference-tbody"></tbody>
-  </table>
+  {% for j in inference_jobs %}
+  {% set is_disabled = not j.enabled %}
+  <article class="card{% if is_disabled %} input-disabled{% endif %}" data-inference-job="{{ j.name }}">
+    <header>
+      <h3>{{ j.name }}</h3>
+      <span class="cam-status idle" data-status>idle</span>
+      <span class="badge">{{ j.backend }} · {{ j.model }}</span>
+      <label class="switch" title="enable / disable {{ j.name }}">
+        <input type="checkbox" data-input-toggle="inference/{{ j.name }}" {% if not is_disabled %}checked{% endif %}>
+        <span class="slider"></span>
+      </label>
+      <div class="card-tabs">
+        <button type="button" class="card-tab" data-act="settings">Settings ▾</button>
+        <button type="button" class="card-tab" data-act="delete-job">Remove</button>
+      </div>
+    </header>
+    <div class="meta">
+      <div class="device">upstream: <code>{{ j.upstream }}</code></div>
+      <div>
+        classes: {% if j.classes %}{{ j.classes|join(', ') }}{% else %}<em>all</em>{% endif %}
+        · threshold: {{ j.threshold }}
+        · clips: {{ "on" if j.clips.enabled else "off" }}
+      </div>
+    </div>
+    <div class="settings-wrap" hidden>
+      <p class="empty">Job CRUD form lands in the next slice. For now edit
+        <code>~/.config/usb-rtsp/inference/jobs.yml</code> and restart the admin.</p>
+    </div>
+  </article>
+  {% endfor %}
 </section>
 
 <script src="/static/inference/inference.js"></script>

@@ -1,5 +1,5 @@
 name: inference
-description: Receive detections + annotated streams from an external inference project
-version: 0.1.0
-default_enabled: false
-order: 90
+description: Hailo + CPU inference jobs — subscribe to a path, infer, republish annotated
+version: 0.2.0
+default_enabled: true
+order: 30
