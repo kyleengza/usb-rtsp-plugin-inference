@@ -97,8 +97,83 @@
       </table>
     </div>
     <div class="settings-wrap" hidden>
-      <p class="empty">Job CRUD form lands in a later slice. For now edit
-        <code>~/.config/usb-rtsp/inference/jobs.yml</code> and restart the admin.</p>
+      <form class="settings" data-inf-form="{{ j.name }}">
+        <input type="hidden" name="name" value="{{ j.name }}">
+
+        <label>Backend
+          <select name="backend">
+            <option value="hailo" {% if j.backend == 'hailo' %}selected{% endif %}>Hailo (accelerator)</option>
+            <option value="cpu"   {% if j.backend == 'cpu'   %}selected{% endif %}>CPU (onnxruntime)</option>
+          </select>
+        </label>
+
+        <label>Model
+          <select name="model" data-current="{{ j.model }}">
+            <option value="{{ j.model }}" selected>{{ j.model }} (current)</option>
+          </select>
+          <small>options are loaded for the chosen backend</small>
+        </label>
+
+        <label>Upstream URL
+          <input type="text" name="upstream" value="{{ j.upstream }}" required>
+        </label>
+
+        <label>Threshold
+          <input type="number" name="threshold" min="0" max="1" step="0.05"
+                 value="{{ j.threshold }}">
+        </label>
+
+        <label>Class filter
+          <input type="text" name="classes" value="{{ j.classes|join(',') }}"
+                 placeholder="(empty = all 80 COCO classes)">
+          <small>comma-separated; e.g. <code>person,car,dog</code></small>
+        </label>
+
+        <label>Inference queue
+          <input type="number" name="inference_queue" min="0" max="60" step="1"
+                 value="{{ j.inference_queue }}">
+        </label>
+
+        <label>Track occlusion (s)
+          <input type="number" name="track_occlusion_s" min="0" max="60" step="0.5"
+                 value="{{ j.track_occlusion_s }}">
+        </label>
+
+        <details class="advanced" {% if j.clips.enabled %}open{% endif %} style="grid-column: 1/-1">
+          <summary>Clip recording ▾</summary>
+          <div class="advanced-grid">
+            <label class="adv">
+              <input type="checkbox" name="clips_enabled" {% if j.clips.enabled %}checked{% endif %}>
+              Record clips on detection events
+            </label>
+            <label class="adv">Post-roll (s)
+              <input type="number" name="clip_post_roll_s" min="0" max="600" step="1"
+                     value="{{ j.clips.post_roll_s }}">
+            </label>
+            <label class="adv">Trigger
+              <select name="clip_trigger">
+                <option value="track_enter"   {% if j.clips.trigger == 'track_enter'   %}selected{% endif %}>track_enter (one clip per object)</option>
+                <option value="any_detection" {% if j.clips.trigger == 'any_detection' %}selected{% endif %}>any_detection</option>
+                <option value="class_filter"  {% if j.clips.trigger == 'class_filter'  %}selected{% endif %}>class_filter</option>
+              </select>
+            </label>
+            <label class="adv">Trigger classes
+              <input type="text" name="clip_trigger_classes"
+                     value="{{ j.clips.trigger_classes|join(',') }}"
+                     placeholder="(empty = same as class filter)">
+            </label>
+            <label class="adv">Retention count
+              <input type="number" name="clip_retention" min="1" max="10000" step="1"
+                     value="{{ j.clips.retention_count }}">
+            </label>
+          </div>
+        </details>
+
+        <div class="actions">
+          <button type="submit">Save &amp; reload</button>
+        </div>
+        <div class="form-status" data-form-status></div>
+      </form>
     </div>
   </article>
   {% endfor %}

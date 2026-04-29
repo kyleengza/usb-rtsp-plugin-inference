@@ -108,7 +108,102 @@
     return `/preview/${encodeURIComponent(name)}/`;
   }
 
+  // Cache /api/inference/models so the model dropdown can be repopulated
+  // when the backend toggle flips, without a roundtrip per click.
+  let _modelsCache = null;
+  async function getModels() {
+    if (_modelsCache) return _modelsCache;
+    try {
+      const r = await fetch("/api/inference/models", { credentials: "same-origin" });
+      if (!r.ok) return { hailo: [], cpu: [] };
+      _modelsCache = await r.json();
+      return _modelsCache;
+    } catch { return { hailo: [], cpu: [] }; }
+  }
+
+  async function refreshModelOptions(form) {
+    const backend = form.querySelector("[name=backend]").value;
+    const sel = form.querySelector("[name=model]");
+    if (!sel) return;
+    const current = sel.dataset.current || sel.value;
+    const data = await getModels();
+    const options = data[backend] || [];
+    if (!options.length) {
+      sel.innerHTML = `<option value="">(no ${backend} models on disk)</option>`;
+      return;
+    }
+    sel.innerHTML = options.map(m => {
+      const sel_attr = m.name === current ? " selected" : "";
+      return `<option value="${m.name}"${sel_attr}>${m.name} · ${m.fps_target} fps target</option>`;
+    }).join("");
+  }
+
+  function setStatus(form, kind, msg) {
+    const el = form.querySelector("[data-form-status]");
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.remove("ok", "err");
+    if (kind) el.classList.add(kind);
+  }
+
+  async function submitJob(form) {
+    const fd = new FormData(form);
+    const classes_raw = String(fd.get("classes") || "").trim();
+    const trig_classes_raw = String(fd.get("clip_trigger_classes") || "").trim();
+    const payload = {
+      name: fd.get("name"),
+      upstream: fd.get("upstream"),
+      enabled: true,  // toggled via the header switch, not this form
+      backend: fd.get("backend"),
+      model: fd.get("model"),
+      classes: classes_raw ? classes_raw.split(",").map(s => s.trim()).filter(Boolean) : [],
+      threshold: parseFloat(fd.get("threshold")) || 0.4,
+      inference_queue: parseInt(fd.get("inference_queue") || "5", 10),
+      track_occlusion_s: parseFloat(fd.get("track_occlusion_s")) || 2.0,
+      clips: {
+        enabled: !!fd.get("clips_enabled"),
+        pre_roll_s: 0,  // v1: pre-roll not supported
+        post_roll_s: parseInt(fd.get("clip_post_roll_s") || "10", 10),
+        trigger: fd.get("clip_trigger") || "track_enter",
+        trigger_classes: trig_classes_raw ? trig_classes_raw.split(",").map(s => s.trim()).filter(Boolean) : [],
+        retention_count: parseInt(fd.get("clip_retention") || "100", 10),
+      },
+    };
+    setStatus(form, null, "saving…");
+    try {
+      const r = await fetch(`/api/inference/jobs/${encodeURIComponent(payload.name)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify(payload),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setStatus(form, "err", data.detail || `HTTP ${r.status}`);
+        return;
+      }
+      const bits = [`saved`, data.render || "", data.restart ? `restart=${data.restart}` : ""].filter(Boolean);
+      setStatus(form, "ok", bits.join(" · "));
+    } catch (e) {
+      setStatus(form, "err", String(e));
+    }
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
+    // Populate model dropdowns on page load + wire backend-toggle re-fetch.
+    $$("[data-inf-form]").forEach(form => {
+      refreshModelOptions(form);
+      form.querySelector("[name=backend]").addEventListener("change", () => {
+        const sel = form.querySelector("[name=model]");
+        if (sel) sel.dataset.current = sel.value;  // remember user's pick across backend swaps
+        refreshModelOptions(form);
+      });
+      form.addEventListener("submit", e => {
+        e.preventDefault();
+        submitJob(form);
+      });
+    });
+
     document.addEventListener("click", e => {
       // Tab toggles inside an inference job card.
       const tab = e.target.closest("[data-inference-job] [data-act]");

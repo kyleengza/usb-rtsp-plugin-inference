@@ -13,16 +13,20 @@
 # ~/.cache/usb-rtsp/inference-models/ directory.
 
 hailo:
-  # yolov8m: ~26M params, listed first so new-job UX defaults to it.
-  # Bigger than yolov8s; ~2-3x more Hailo bandwidth per inference but
-  # noticeably more accurate on COCO. Fetched by bringup.
-  yolov8m:
-    hef: ~/.cache/usb-rtsp/inference-models/yolov8m_h8.hef
+  # yolov8s default: matches the camera's source FPS at 1280x720 so the
+  # output stays near-realtime. Listed first so new-job UX picks it.
+  yolov8s:
+    hef: /usr/share/hailo-models/yolov8s_h8.hef
     post_so: /usr/lib/aarch64-linux-gnu/hailo/tappas/post_processes/libyolo_hailortpp_post.so
     labels: coco
     fps_target: 30
-  yolov8s:
-    hef: /usr/share/hailo-models/yolov8s_h8.hef
+  # yolov8m: ~26M params (~2-3x more Hailo bandwidth than yolov8s).
+  # More accurate; lags noticeably behind realtime on a 30 fps source
+  # because Hailo can't keep up — cv2's input buffer fills and the
+  # output trails by seconds. Use only when you can drop source fps,
+  # accept the lag, or shrink the resolution.
+  yolov8m:
+    hef: ~/.cache/usb-rtsp/inference-models/yolov8m_h8.hef
     post_so: /usr/lib/aarch64-linux-gnu/hailo/tappas/post_processes/libyolo_hailortpp_post.so
     labels: coco
     fps_target: 30

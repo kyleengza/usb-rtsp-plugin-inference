@@ -1,6 +1,7 @@
 """Inference plugin REST endpoints (mounted at /api/inference)."""
 from __future__ import annotations
 
+import subprocess
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -8,10 +9,26 @@ from pydantic import BaseModel, Field
 
 from fastapi.responses import FileResponse
 
+from core.helpers import REPO_DIR, systemctl
+
 from . import jobs as jobs_mod
 from . import models as models_mod
 from . import events as events_mod
 from . import clips as clips_mod
+
+
+def _rerender_and_restart() -> dict[str, Any]:
+    """Re-emit mediamtx.yml and bounce the mediamtx service so it picks
+    up new/changed paths. Mirrors the relay plugin's save flow."""
+    p = subprocess.run(
+        ["python3", "-m", "core.renderer"],
+        cwd=str(REPO_DIR),
+        capture_output=True, text=True, timeout=15,
+    )
+    if p.returncode != 0:
+        return {"render": "failed", "render_err": (p.stdout + p.stderr).strip()}
+    code, _ = systemctl("restart", "usb-rtsp")
+    return {"render": "ok", "restart": "ok" if code == 0 else "failed"}
 
 
 class ClipsIn(BaseModel):
@@ -102,7 +119,7 @@ def make_router(ctx) -> APIRouter:
             saved = jobs_mod.add_job(ctx, _to_job(payload))
         except jobs_mod.ValidationError as e:
             raise HTTPException(400, str(e))
-        return jobs_mod.job_to_public_dict(saved)
+        return {"job": jobs_mod.job_to_public_dict(saved), **_rerender_and_restart()}
 
     @r.put("/jobs/{name}")
     def update(name: str, payload: JobIn) -> dict[str, Any]:
@@ -112,13 +129,13 @@ def make_router(ctx) -> APIRouter:
             raise HTTPException(404, f"no such job: {name}")
         except jobs_mod.ValidationError as e:
             raise HTTPException(400, str(e))
-        return jobs_mod.job_to_public_dict(saved)
+        return {"job": jobs_mod.job_to_public_dict(saved), **_rerender_and_restart()}
 
     @r.delete("/jobs/{name}")
     def remove(name: str) -> dict[str, Any]:
         if not jobs_mod.delete_job(ctx, name):
             raise HTTPException(404, f"no such job: {name}")
-        return {"ok": True}
+        return {"ok": True, **_rerender_and_restart()}
 
     @r.get("/jobs/{name}/events")
     def job_events(name: str, n: int = 100) -> dict[str, Any]:
