@@ -6,8 +6,9 @@
     plugin-wide.</p>
 
   <form data-inference-config class="advanced-grid">
-    <label class="adv">Clips root
-      <input type="text" name="clips_root" placeholder="loading…" required>
+    <label class="adv" style="grid-column: 1 / -1">Clips root
+      <input type="text" name="clips_root" placeholder="loading…" required
+             style="width: 100%; box-sizing: border-box; font-family: monospace;">
       <small>absolute path; <code>~</code> expands to <code>$HOME</code>.
         Subfolders are auto-created per job (<code>cam0-ai/…</code>,
         <code>relay-front-ai/…</code>). Switch to a network mount when
