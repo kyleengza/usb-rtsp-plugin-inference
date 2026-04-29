@@ -169,7 +169,7 @@ def make_router(ctx) -> APIRouter:
         out_jobs = []
         for j in jobs_mod.list_jobs(ctx):
             item = jobs_mod.job_to_public_dict(j)
-            item["_live"] = _live_for_job(j.name, live)
+            item["_live"] = _live_for_job(j.name, live, j.upstream)
             # Per-worker stats file (FPS, inference latency). Only present
             # while the worker is alive AND the writeback has run at least
             # once — fresh-spawn jobs may not have a file for ~10s.

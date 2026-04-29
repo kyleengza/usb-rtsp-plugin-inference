@@ -37,16 +37,30 @@ def live_paths_state() -> dict:
     return out
 
 
-def _live_for_job(job_name: str, live: dict) -> dict | None:
+def _live_for_job(job_name: str, live: dict, upstream_url: str = "") -> dict | None:
     p = live.get(job_name)
     if not p:
         return None
     tracks = p.get("tracks") or []
+    # If the job's upstream is a local mediamtx path, surface whether
+    # it's currently configured. When a USB cam or relay source is
+    # disabled, the renderer drops it from mediamtx.yml and it
+    # disappears from /v3/paths/list — so the inference job has
+    # nothing to read from. Tell the dashboard so the status pill
+    # can be honest about it.
+    upstream_missing = False
+    if upstream_url:
+        prefix = "rtsp://127.0.0.1:8554/"
+        if upstream_url.startswith(prefix):
+            src_name = upstream_url[len(prefix):].rstrip("/")
+            if src_name and src_name not in live:
+                upstream_missing = True
     return {
         "ready": bool(p.get("ready") or p.get("sourceReady")),
         "bytes_received": p.get("bytesReceived", 0),
         "tracks": ", ".join(tracks),
         "readers": len(p.get("readers") or []),
+        "upstream_missing": upstream_missing,
     }
 
 
@@ -104,7 +118,7 @@ def section_context(ctx, request) -> dict:
     enriched = []
     for j in jobs_mod.list_jobs(ctx):
         item = jobs_mod.job_to_public_dict(j)
-        item["_live"] = _live_for_job(j.name, live)
+        item["_live"] = _live_for_job(j.name, live, j.upstream)
         enriched.append(item)
     return {
         "inference_jobs": enriched,

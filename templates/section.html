@@ -22,10 +22,13 @@
   {% for j in inference_jobs %}
   {% set is_disabled = not j.enabled %}
   {% set live = j._live %}
-  <article class="card{% if is_disabled %} input-disabled{% endif %}" data-inference-job="{{ j.name }}">
+  {% set upstream_missing = live and live.upstream_missing %}
+  <article class="card{% if is_disabled or upstream_missing %} input-disabled{% endif %}" data-inference-job="{{ j.name }}">
     <header>
       <h3>{{ j.name }}</h3>
-      {% if live and live.ready %}
+      {% if upstream_missing %}
+        <span class="cam-status err" data-status>source disabled/missing</span>
+      {% elif live and live.ready %}
         <span class="cam-status ok" data-status>{{ live.readers or 0 }} viewer{% if live.readers != 1 %}s{% endif %}</span>
       {% elif live and live.readers and live.readers > 0 %}
         <span class="cam-status err" data-status>upstream unreachable</span>

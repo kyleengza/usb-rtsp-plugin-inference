@@ -39,6 +39,10 @@
     if (!j.enabled) return ["disabled", "idle"];
     const live = j._live;
     if (!live) return ["idle", "idle"];
+    // Source path went away — usually because the user disabled the
+    // USB cam / relay this inference points at. The job itself is
+    // still configured but has nothing to read.
+    if (live.upstream_missing) return ["source disabled/missing", "err"];
     if (live.ready) {
       const n = live.readers || 0;
       return [`${n} viewer${n === 1 ? "" : "s"}`, "ok"];
@@ -74,6 +78,10 @@
       statusEl.textContent = text;
       statusEl.classList.remove("ok", "warn", "err", "idle");
       statusEl.classList.add(kind);
+      // Dim the whole card when the upstream is gone — it's
+      // effectively non-functional until the source comes back.
+      const isDead = !!(j && (!j.enabled || (j._live && j._live.upstream_missing)));
+      card.classList.toggle("input-disabled", isDead);
       // Backend·model badge — saved-side updates need to reflect here
       // without a full page reload (toggle pill, settings save).
       const badgeEl = card.querySelector("[data-backend-badge]");
