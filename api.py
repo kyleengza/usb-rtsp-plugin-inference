@@ -125,6 +125,10 @@ class AlwaysOnIn(BaseModel):
     enabled: bool
 
 
+class SourceToggleIn(BaseModel):
+    enabled: bool
+
+
 def _to_job(j: JobIn) -> jobs_mod.Job:
     return jobs_mod.Job(
         name=j.name,
@@ -215,9 +219,6 @@ def make_router(ctx) -> APIRouter:
             "default_backend": default_backend,
             "default_model": default_model,
         }
-
-    class SourceToggleIn(BaseModel):
-        enabled: bool
 
     @r.patch("/sources/{source_name}")
     def toggle_source(source_name: str, payload: SourceToggleIn) -> dict[str, Any]:

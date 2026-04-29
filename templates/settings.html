@@ -40,6 +40,13 @@
   function escHtml(s) {
     return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   }
+  function fmtErrDetail(d, fallback) {
+    if (d == null) return String(fallback);
+    if (typeof d === "string") return d;
+    if (Array.isArray(d)) return d.map(x => x?.msg || JSON.stringify(x)).join("; ");
+    if (typeof d === "object") return d.msg || JSON.stringify(d);
+    return String(d);
+  }
   async function renderSources() {
     if (!sourcesBox) return;
     let data;
@@ -92,7 +99,8 @@
         let data = null;
         try { data = JSON.parse(text); } catch {}
         if (!r.ok) {
-          if (status) status.textContent = `✗ ${data?.detail || r.status}`;
+          const msg = data ? fmtErrDetail(data.detail, r.status) : (text || r.status);
+          if (status) status.textContent = `✗ HTTP ${r.status}: ${msg}`;
           cb.checked = !wantOn;  // revert UI
         } else {
           await renderSources();
