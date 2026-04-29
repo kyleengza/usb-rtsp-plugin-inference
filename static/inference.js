@@ -294,10 +294,20 @@
         if (!wrap.hidden) {
           if (act === "preview") {
             const iframe = card.querySelector("[data-preview-frame]");
-            if (iframe && !iframe.src) iframe.src = previewSrc(name);
+            if (iframe && (!iframe.src || iframe.src.endsWith("about:blank"))) {
+              iframe.src = previewSrc(name);
+            }
           }
           if (act === "events") loadEvents(card, name);
           if (act === "clips") loadClips(card, name);
+        } else {
+          // Folding the preview closed must actually unload the iframe;
+          // otherwise the WebRTC/HLS reader stays subscribed and mediamtx
+          // never starts the runOnDemandCloseAfter countdown.
+          if (act === "preview") {
+            const iframe = card.querySelector("[data-preview-frame]");
+            if (iframe) iframe.src = "about:blank";
+          }
         }
         return;
       }
