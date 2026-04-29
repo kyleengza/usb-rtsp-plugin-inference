@@ -178,13 +178,43 @@ def make_router(ctx) -> APIRouter:
 
     @r.post("/jobs/{name}/kick")
     def kick_readers(name: str) -> dict[str, Any]:
-        """Kick every webrtc + rtsp reader on this job's path. Used by
-        the dashboard preview-fold to make worker shutdown immediate
-        instead of waiting for runOnDemandCloseAfter (and any ICE
-        teardown lag). Best-effort; failures don't surface."""
+        """Kick every reader on this job's path — RTSP, WebRTC, HLS
+        muxer, RTMP conn — so the worker exits as soon as the panel
+        intends, not whenever ICE / HLS-segment polling eventually
+        idles out.
+
+        Source of truth: the path's own ``readers`` list (each entry
+        has ``type`` + ``id``). Iterating per-session-list missed
+        HLS muxers and could miss in-flight WebRTC sessions that
+        haven't registered in /v3/webrtcsessions/list yet."""
         if not jobs_mod.get_job(ctx, name):
             raise HTTPException(404, f"no such job: {name}")
-        kicked = []
+        kicked: list[dict[str, Any]] = []
+        path = api_get(f"/v3/paths/get/{name}") or {}
+        for r in path.get("readers", []) or []:
+            rtype = r.get("type", "")
+            rid = r.get("id", "")
+            # Map mediamtx reader type → kick endpoint. hlsmuxers kick
+            # by path name (one muxer per path), the rest kick by id.
+            if rtype == "rtspSession":
+                code, _ = api_post(f"/v3/rtspsessions/kick/{rid}")
+            elif rtype == "webrtcSession":
+                code, _ = api_post(f"/v3/webrtcsessions/kick/{rid}")
+            elif rtype == "hlsMuxer":
+                code, _ = api_post(f"/v3/hlsmuxers/kick/{name}")
+                rid = name
+            elif rtype == "rtmpConn":
+                code, _ = api_post(f"/v3/rtmpconns/kick/{rid}")
+            elif rtype == "srtConn":
+                code, _ = api_post(f"/v3/srtconns/kick/{rid}")
+            else:
+                # Unknown reader type — log it so we can extend later,
+                # but don't fail the whole kick.
+                kicked.append({"type": rtype, "id": rid, "status": "unknown-type"})
+                continue
+            kicked.append({"type": rtype, "id": rid, "status": code})
+        # Also chase any session entries that haven't been promoted to
+        # the path readers list yet (transient setup states).
         for kind in ("rtspsessions", "webrtcsessions"):
             data = api_get(f"/v3/{kind}/list") or {}
             for s in data.get("items", []) or []:
@@ -193,9 +223,12 @@ def make_router(ctx) -> APIRouter:
                 sid = s.get("id")
                 if not sid:
                     continue
+                # Skip if already kicked above.
+                if any(k.get("id") == sid for k in kicked):
+                    continue
                 code, _ = api_post(f"/v3/{kind}/kick/{sid}")
-                kicked.append({"kind": kind, "id": sid, "status": code})
-        return {"kicked": kicked}
+                kicked.append({"type": kind, "id": sid, "status": code, "stage": "transient"})
+        return {"kicked": kicked, "count": len(kicked)}
 
     @r.patch("/jobs/{name}/clips")
     def toggle_clips(name: str, payload: ClipsToggleIn) -> dict[str, Any]:
