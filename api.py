@@ -335,6 +335,31 @@ def make_router(ctx) -> APIRouter:
             raise HTTPException(404, f"no such job: {name}")
         return {"ok": True, **_remove_job_from_mediamtx(name)}
 
+    def _set_enabled(name: str, want: bool) -> dict[str, Any]:
+        j = jobs_mod.get_job(ctx, name)
+        if not j:
+            raise HTTPException(404, f"no such job: {name}")
+        if j.enabled == want:
+            return {"job": jobs_mod.job_to_public_dict(j), "applied": "unchanged"}
+        j.enabled = want
+        try:
+            saved = jobs_mod.update_job(ctx, name, j)
+        except jobs_mod.ValidationError as e:
+            raise HTTPException(400, str(e))
+        # Disabling: drop the path from mediamtx so its worker exits.
+        # Enabling: push the new path config in.
+        return {"job": jobs_mod.job_to_public_dict(saved),
+                **(_apply_job_to_mediamtx(ctx, name) if want
+                   else _remove_job_from_mediamtx(name))}
+
+    @r.post("/jobs/{name}/enable")
+    def enable_job(name: str) -> dict[str, Any]:
+        return _set_enabled(name, True)
+
+    @r.post("/jobs/{name}/disable")
+    def disable_job(name: str) -> dict[str, Any]:
+        return _set_enabled(name, False)
+
     @r.post("/jobs/{name}/kick")
     def kick_readers(name: str) -> dict[str, Any]:
         """Kick every reader on this job's path — RTSP, WebRTC, HLS
