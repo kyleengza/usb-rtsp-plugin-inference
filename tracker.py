@@ -17,7 +17,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Iterable
 
-from dets import Detection  # type: ignore
+try:
+    # Worker runs us as a top-level script (sys.path includes plugin dir).
+    from dets import Detection  # type: ignore
+except ImportError:
+    # API process imports us via the package; relative import works there.
+    from .dets import Detection  # type: ignore
 
 
 def _iou(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
@@ -143,9 +148,15 @@ class IoUTracker:
                 ))
                 del self._tracks[tid]
 
-        # Build the tracked-detection list (each detection annotated with
-        # the track ID and the track's EMA-smoothed score so annotation
-        # has a stable value to display).
+        # Build the tracked-detection list. Two sources:
+        #   (a) tracks that matched a detection this frame — drawn from the
+        #       fresh detection (current box) with the track's EMA score.
+        #   (b) tracks that did NOT match this frame but are still alive
+        #       (within ttl_s) — drawn at the track's last known box so
+        #       the bounding box doesn't flicker off when a frame's
+        #       detection score dips below the user threshold or the
+        #       backend briefly misses the object. ttl_s caps how long
+        #       a "ghost" box can linger after the real object leaves.
         tracked: list[Detection] = []
         for tid, det_idx in matches.items():
             d = detections[det_idx]
@@ -154,5 +165,13 @@ class IoUTracker:
                 class_id=d.class_id, label=d.label, score=d.score, box=d.box,
                 track_id=tid,
                 smoothed_score=(t.smoothed_score if t else d.score),
+            ))
+        for tid, t in self._tracks.items():
+            if tid in matches:
+                continue
+            tracked.append(Detection(
+                class_id=t.class_id, label=t.label,
+                score=t.score, box=t.box, track_id=tid,
+                smoothed_score=t.smoothed_score,
             ))
         return tracked, events
