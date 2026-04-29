@@ -134,7 +134,10 @@ def annotate(frame: np.ndarray, detections, fps: float, det_count_window: int) -
         col = _color_for_class(det.class_id)
         cv2.rectangle(frame, (x1, y1), (x2, y2), col, 2)
         tid = getattr(det, "track_id", 0)
-        label = f"#{tid} {det.label} {det.score:.2f}" if tid else f"{det.label} {det.score:.2f}"
+        # Prefer the per-track EMA so the displayed confidence doesn't
+        # flicker frame-to-frame; fall back to raw score if untracked.
+        shown = getattr(det, "smoothed_score", 0.0) or det.score
+        label = f"#{tid} {det.label} {shown:.2f}" if tid else f"{det.label} {shown:.2f}"
         (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
         cv2.rectangle(frame, (x1, max(0, y1 - th - 6)), (x1 + tw + 6, y1), col, -1)
         cv2.putText(frame, label, (x1 + 3, y1 - 4),

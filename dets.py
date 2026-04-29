@@ -12,3 +12,7 @@ class Detection:
     score: float
     box: tuple[float, float, float, float]  # x1, y1, x2, y2 in source-frame px
     track_id: int = 0  # 0 = untracked / pre-tracker
+    # Per-track EMA of score, populated by the tracker. Annotation should
+    # prefer this over `score` so the displayed confidence stops flickering
+    # frame-to-frame. 0.0 means "not tracked yet, use score".
+    smoothed_score: float = 0.0

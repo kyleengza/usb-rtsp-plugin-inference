@@ -44,10 +44,17 @@ class _Track:
     class_id: int
     label: str
     box: tuple[float, float, float, float]
-    score: float
+    score: float                  # raw per-frame score
+    smoothed_score: float         # EMA over the track's lifetime
     last_seen_ts: float
     first_seen_ts: float
     hits: int = 1
+
+
+# EMA factor for smoothed confidence. 0.25 means each new frame
+# contributes 25% — half-life of about 3 frames at 30 fps. Smooths out
+# digit-flicker without lagging real changes.
+SCORE_EMA_ALPHA = 0.25
 
 
 @dataclass
@@ -100,6 +107,10 @@ class IoUTracker:
                 d = detections[best_idx]
                 t.box = d.box
                 t.score = d.score
+                t.smoothed_score = (
+                    SCORE_EMA_ALPHA * d.score
+                    + (1.0 - SCORE_EMA_ALPHA) * t.smoothed_score
+                )
                 t.last_seen_ts = ts_s
                 t.hits += 1
                 used_det.add(best_idx)
@@ -113,7 +124,7 @@ class IoUTracker:
             self._next_id += 1
             self._tracks[tid] = _Track(
                 track_id=tid, class_id=d.class_id, label=d.label,
-                box=d.box, score=d.score,
+                box=d.box, score=d.score, smoothed_score=d.score,
                 first_seen_ts=ts_s, last_seen_ts=ts_s,
             )
             events.append(TrackEvent(
@@ -133,18 +144,15 @@ class IoUTracker:
                 del self._tracks[tid]
 
         # Build the tracked-detection list (each detection annotated with
-        # the track ID of the track that matched it; new tracks just
-        # created in this step also annotate their detection).
+        # the track ID and the track's EMA-smoothed score so annotation
+        # has a stable value to display).
         tracked: list[Detection] = []
         for tid, det_idx in matches.items():
             d = detections[det_idx]
-            # Detection is a frozen-ish dataclass — make a copy with track_id
-            tracked.append(_with_track_id(d, tid))
+            t = self._tracks.get(tid)
+            tracked.append(Detection(
+                class_id=d.class_id, label=d.label, score=d.score, box=d.box,
+                track_id=tid,
+                smoothed_score=(t.smoothed_score if t else d.score),
+            ))
         return tracked, events
-
-
-def _with_track_id(d: Detection, track_id: int) -> Detection:
-    return Detection(
-        class_id=d.class_id, label=d.label, score=d.score, box=d.box,
-        track_id=track_id,
-    )
