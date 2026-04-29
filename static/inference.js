@@ -308,6 +308,21 @@
             const iframe = card.querySelector("[data-preview-frame]");
             if (iframe) iframe.src = "about:blank";
           }
+          // Folding the Clips ▾ tab closed: tear down every inline clip
+          // player so we stop pulling bytes and don't sit on multiple
+          // mp4 readers in the background.
+          if (act === "clips") {
+            $$("[data-clip-player-for]", card).forEach(row => {
+              row.hidden = true;
+              const v = row.querySelector("video");
+              if (v) {
+                v.pause();
+                v.removeAttribute("src");
+                v.load();
+              }
+            });
+            $$("[data-clip-play].open", card).forEach(b => b.classList.remove("open"));
+          }
         }
         return;
       }
@@ -326,13 +341,27 @@
         const card = play.closest("[data-inference-job]");
         const file = play.dataset.clipPlay;
         const player = card.querySelector(`[data-clip-player-for="${CSS.escape(file)}"]`);
-        if (player) {
-          player.hidden = !player.hidden;
-          play.classList.toggle("open", !player.hidden);
-          const v = player.querySelector("video");
+        if (!player) return;
+        const v = player.querySelector("video");
+        if (player.hidden) {
+          // Opening: re-attach src (rows are rendered with src already,
+          // but a previous close may have stripped it). Then play.
+          player.hidden = false;
+          play.classList.add("open");
           if (v) {
-            if (!player.hidden) v.play().catch(() => {});
-            else v.pause();
+            const dl = `/api/inference/clips/${encodeURIComponent(card.dataset.inferenceJob)}/${encodeURIComponent(file)}`;
+            if (!v.src || v.src.endsWith("about:blank")) v.src = dl;
+            v.play().catch(() => {});
+          }
+        } else {
+          // Closing: pause AND release the resource so we stop pulling
+          // bytes / holding a reader handle.
+          player.hidden = true;
+          play.classList.remove("open");
+          if (v) {
+            v.pause();
+            v.removeAttribute("src");
+            v.load();
           }
         }
       }
