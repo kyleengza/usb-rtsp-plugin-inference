@@ -48,6 +48,13 @@ class Job:
     # Bench (yolo11n on Pi 5 CPU, threads=3):
     #   640: ~6 fps    416: ~15 fps    320: ~24 fps
     cpu_input_size: int = 640
+    # Cap inference rate so the worker doesn't burn CPU faster than
+    # needed. Frames between scheduled inferences are pulled from the
+    # latest-frame reader and republished as-is (last annotation
+    # carried forward). 0 = unlimited (worker runs as fast as backend
+    # allows). Typical surveillance use is 5-10 fps; full-rate is
+    # only useful for action recognition / fast-moving content.
+    max_inference_fps: int = 0
     inference_queue: int = 5
     track_occlusion_s: float = 2.0
     # Frames a new track must match before it gets drawn ("banding"). 1 =
@@ -104,6 +111,7 @@ def _load_jobs(path: Path) -> list[Job]:
             threshold=float(entry.get("threshold", 0.4)),
             match_threshold=float(entry.get("match_threshold", 0.0)),
             cpu_input_size=int(entry.get("cpu_input_size", 640)),
+            max_inference_fps=int(entry.get("max_inference_fps", 0)),
             inference_queue=int(entry.get("inference_queue", 5)),
             track_occlusion_s=float(entry.get("track_occlusion_s", 2.0)),
             min_hits=int(entry.get("min_hits", 3)),
@@ -145,6 +153,8 @@ def _validate(j: Job, existing_names: set[str], *, allow_existing: str | None = 
         raise ValidationError("match_threshold must be ≤ threshold (or 0 for auto)")
     if j.cpu_input_size not in (320, 416, 640):
         raise ValidationError("cpu_input_size must be 320, 416, or 640")
+    if not (0 <= j.max_inference_fps <= 60):
+        raise ValidationError("max_inference_fps must be in [0, 60]")
     if j.inference_queue < 0 or j.inference_queue > 60:
         raise ValidationError("inference_queue must be in [0, 60]")
     if j.track_occlusion_s < 0 or j.track_occlusion_s > 60:

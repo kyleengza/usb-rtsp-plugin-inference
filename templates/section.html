@@ -171,6 +171,12 @@
           <small>CPU backend only — Hailo HEFs are pinned at 640×640</small>
         </label>
 
+        <label>Max inference fps
+          <input type="number" name="max_inference_fps" min="0" max="60" step="1"
+                 value="{{ j.max_inference_fps }}">
+          <small>cap analysis rate; 0 = unlimited. Display stays at source fps; only the backend is throttled. Halve this to halve CPU used.</small>
+        </label>
+
         <label>Min hits
           <input type="number" name="min_hits" min="1" max="30" step="1"
                  value="{{ j.min_hits }}">

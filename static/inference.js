@@ -248,6 +248,7 @@
       threshold: parseFloat(fd.get("threshold")) || 0.4,
       match_threshold: parseFloat(fd.get("match_threshold")) || 0.0,
       cpu_input_size: parseInt(fd.get("cpu_input_size") || "640", 10),
+      max_inference_fps: parseInt(fd.get("max_inference_fps") || "0", 10),
       // inference_queue field removed from the form: was wired to argparse
       // but never actually consumed in the worker loop. Default 5 carried
       // through for any pre-existing jobs.yml entries that still have it.

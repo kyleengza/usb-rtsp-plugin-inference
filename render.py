@@ -42,6 +42,7 @@ def _build_runondemand(j: jobs_mod.Job, clips_root: str) -> str:
         "--threshold", f"{j.threshold:.3f}",
         "--match-threshold", f"{j.match_threshold:.3f}",
         "--cpu-input-size", str(j.cpu_input_size),
+        "--max-inference-fps", str(j.max_inference_fps),
         "--inference-queue", str(j.inference_queue),
         "--track-occlusion-s", f"{j.track_occlusion_s:.2f}",
         "--min-hits", str(j.min_hits),

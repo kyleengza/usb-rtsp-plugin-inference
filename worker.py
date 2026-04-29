@@ -263,6 +263,8 @@ def parse_args() -> argparse.Namespace:
                          "0 = auto = max(0.05, threshold * 0.5)")
     ap.add_argument("--cpu-input-size", type=int, default=640,
                     help="CPU backend only: ONNX input HxW (320/416/640)")
+    ap.add_argument("--max-inference-fps", type=int, default=0,
+                    help="cap inference rate; 0 = unlimited. CPU saved scales linearly")
     ap.add_argument("--classes", default="")
     ap.add_argument("--inference-queue", type=int, default=5)
     ap.add_argument("--track-occlusion-s", type=float, default=2.0)
@@ -332,6 +334,9 @@ def main() -> int:
     dets_in_window = 0
     last_det_count = 0
     last_log = time.monotonic()
+    last_inference_t = 0.0
+    inference_period_s = (1.0 / args.max_inference_fps) if args.max_inference_fps > 0 else 0.0
+    cached_tracked: list = []     # last frame's annotated detections
     started_at = time.monotonic()
     fps_observed = float(fps_int)
     stats_dir = Path.home() / ".cache" / "usb-rtsp" / "inference-stats"
@@ -343,16 +348,28 @@ def main() -> int:
             if frame is None:
                 continue
             ts = time.time()
-            inf_t0 = time.perf_counter()
-            try:
-                detections = backend.detect(frame)
-            except Exception as e:
-                log(f"inference error (continuing): {e}")
-                detections = []
-            inference_ms_sum += (time.perf_counter() - inf_t0) * 1000.0
-            inference_count += 1
-            dets_in_window += len(detections)
-            tracked, track_events = tracker.step(detections, ts_s=ts)
+            now_mono = time.monotonic()
+            # Inference-rate throttle: skip the backend call when the
+            # last inference was more recent than 1/max_inference_fps.
+            # Frame is still pushed (with the previously-computed
+            # tracked detections drawn over it) so the *display* rate
+            # stays at source FPS — only inference itself is throttled.
+            if inference_period_s > 0 and (now_mono - last_inference_t) < inference_period_s:
+                tracked = cached_tracked
+                track_events = []
+            else:
+                last_inference_t = now_mono
+                inf_t0 = time.perf_counter()
+                try:
+                    detections = backend.detect(frame)
+                except Exception as e:
+                    log(f"inference error (continuing): {e}")
+                    detections = []
+                inference_ms_sum += (time.perf_counter() - inf_t0) * 1000.0
+                inference_count += 1
+                dets_in_window += len(detections)
+                tracked, track_events = tracker.step(detections, ts_s=ts)
+                cached_tracked = tracked
             if event_log:
                 for ev in track_events:
                     event_log.emit({
