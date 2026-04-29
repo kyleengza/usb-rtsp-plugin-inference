@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import contextlib
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
@@ -18,12 +17,7 @@ import numpy as np  # type: ignore
 import hailo_platform as hpt  # type: ignore
 
 
-@dataclass
-class Detection:
-    class_id: int
-    label: str
-    score: float
-    box: tuple[float, float, float, float]  # x1, y1, x2, y2 in source-frame pixel coords
+from dets import Detection  # type: ignore  # shared dataclass
 
 
 class HailoBackend:

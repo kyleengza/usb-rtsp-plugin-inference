@@ -37,12 +37,20 @@ def _build_runondemand(j: jobs_mod.Job) -> str:
         "--backend", j.backend,
         "--model", j.model,
         "--model-path", model_path,
+        "--job-name", j.name,
         "--threshold", f"{j.threshold:.3f}",
         "--inference-queue", str(j.inference_queue),
         "--track-occlusion-s", f"{j.track_occlusion_s:.2f}",
     ]
     if j.classes:
         parts.extend(["--classes", ",".join(j.classes)])
+    if j.clips.enabled:
+        parts.append("--clips-enabled")
+        parts.extend(["--clip-post-roll-s", f"{j.clips.post_roll_s:.2f}"])
+        parts.extend(["--clip-trigger", j.clips.trigger])
+        parts.extend(["--clip-retention", str(j.clips.retention_count)])
+        if j.clips.trigger_classes:
+            parts.extend(["--clip-trigger-classes", ",".join(j.clips.trigger_classes)])
     return " ".join(shlex.quote(p) for p in parts)
 
 

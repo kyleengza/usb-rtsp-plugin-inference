@@ -133,7 +133,8 @@ def annotate(frame: np.ndarray, detections, fps: float, det_count_window: int) -
         x1, y1, x2, y2 = (int(round(v)) for v in det.box)
         col = _color_for_class(det.class_id)
         cv2.rectangle(frame, (x1, y1), (x2, y2), col, 2)
-        label = f"{det.label} {det.score:.2f}"
+        tid = getattr(det, "track_id", 0)
+        label = f"#{tid} {det.label} {det.score:.2f}" if tid else f"{det.label} {det.score:.2f}"
         (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
         cv2.rectangle(frame, (x1, max(0, y1 - th - 6)), (x1 + tw + 6, y1), col, -1)
         cv2.putText(frame, label, (x1 + 3, y1 - 4),
@@ -158,22 +159,36 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--backend", choices=("hailo", "cpu"), required=True)
     ap.add_argument("--model", required=True)
     ap.add_argument("--model-path", required=True)
+    ap.add_argument("--job-name", default="")
     ap.add_argument("--threshold", type=float, default=0.4)
     ap.add_argument("--classes", default="")
     ap.add_argument("--inference-queue", type=int, default=5)
     ap.add_argument("--track-occlusion-s", type=float, default=2.0)
+    # Clip recording
+    ap.add_argument("--clips-enabled", action="store_true")
+    ap.add_argument("--clip-post-roll-s", type=float, default=10.0)
+    ap.add_argument("--clip-trigger", default="track_enter")
+    ap.add_argument("--clip-trigger-classes", default="")
+    ap.add_argument("--clip-retention", type=int, default=100)
     return ap.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    log(f"start: backend={args.backend} model={args.model} upstream={args.upstream}")
+    job_name = args.job_name or "(unnamed)"
+    log(f"start: job={job_name} backend={args.backend} model={args.model} upstream={args.upstream}")
 
     labels = _load_labels(args.backend, args.model)
     backend = make_backend(args, labels)
     if backend is None:
         log(f"backend {args.backend!r} not implemented yet — exiting")
         return 0
+
+    from tracker import IoUTracker  # type: ignore
+    from events import JobEventLog  # type: ignore
+    from clips import ClipRecorder  # type: ignore
+    tracker = IoUTracker(iou_threshold=0.3, ttl_s=args.track_occlusion_s)
+    event_log = JobEventLog(args.job_name) if args.job_name else None
 
     cap = open_upstream(args.upstream)
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 1280
@@ -183,6 +198,18 @@ def main() -> int:
 
     ff = spawn_ffmpeg(args.output, w, h, fps_int)
 
+    clipper = None
+    if args.clips_enabled and args.job_name:
+        trig_classes = {c.strip() for c in args.clip_trigger_classes.split(",") if c.strip()}
+        clipper = ClipRecorder(
+            job_name=args.job_name,
+            width=w, height=h, fps=fps_int,
+            post_roll_s=args.clip_post_roll_s,
+            retention_count=args.clip_retention,
+            trigger=args.clip_trigger,
+            trigger_classes=trig_classes or None,
+        )
+
     stop = {"flag": False}
     def _handler(*_): stop["flag"] = True
     signal.signal(signal.SIGTERM, _handler)
@@ -191,7 +218,6 @@ def main() -> int:
     frames_pushed = 0
     last_det_count = 0
     last_log = time.monotonic()
-    last_fps_calc = time.monotonic()
     fps_observed = float(fps_int)
     try:
         while not stop["flag"]:
@@ -199,19 +225,37 @@ def main() -> int:
             if not ok:
                 time.sleep(0.05)
                 continue
+            ts = time.time()
             try:
                 detections = backend.detect(frame)
-            except Exception as e:  # don't crash the worker on an inference glitch
+            except Exception as e:
                 log(f"inference error (continuing): {e}")
                 detections = []
-            annotate(frame, detections, fps_observed, len(detections))
+            tracked, track_events = tracker.step(detections, ts_s=ts)
+            if event_log:
+                for ev in track_events:
+                    event_log.emit({
+                        "ts": ev.ts,
+                        "kind": ev.kind,
+                        "track_id": ev.track_id,
+                        "label": ev.label,
+                        "score": round(ev.score, 4),
+                        "box": [round(v, 2) for v in ev.box],
+                    })
+            if clipper:
+                for ev in track_events:
+                    clipper.maybe_start(ev.kind, ev.track_id, ev.label, ev.ts)
+            annotate(frame, tracked, fps_observed, len(tracked))
+            if clipper:
+                cur_ids = {getattr(d, "track_id", 0) for d in tracked}
+                clipper.write_frame(frame, cur_ids, ts)
             try:
                 ff.stdin.write(frame.tobytes())
             except (BrokenPipeError, IOError) as e:
                 log(f"ffmpeg pipe closed: {e}")
                 break
             frames_pushed += 1
-            last_det_count = len(detections)
+            last_det_count = len(tracked)
             now = time.monotonic()
             if now - last_log > 10:
                 fps_observed = frames_pushed / (now - last_log)
@@ -221,6 +265,11 @@ def main() -> int:
                 last_log = now
     finally:
         log("shutting down")
+        if clipper:
+            try:
+                clipper.close_all()
+            except Exception:
+                pass
         try:
             backend.close()
         except Exception:

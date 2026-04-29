@@ -6,8 +6,12 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from fastapi.responses import FileResponse
+
 from . import jobs as jobs_mod
 from . import models as models_mod
+from . import events as events_mod
+from . import clips as clips_mod
 
 
 class ClipsIn(BaseModel):
@@ -114,6 +118,32 @@ def make_router(ctx) -> APIRouter:
     def remove(name: str) -> dict[str, Any]:
         if not jobs_mod.delete_job(ctx, name):
             raise HTTPException(404, f"no such job: {name}")
+        return {"ok": True}
+
+    @r.get("/jobs/{name}/events")
+    def job_events(name: str, n: int = 100) -> dict[str, Any]:
+        if not jobs_mod.get_job(ctx, name):
+            raise HTTPException(404, f"no such job: {name}")
+        n = max(1, min(int(n), 500))
+        return {"events": events_mod.read_recent(name, n=n)}
+
+    @r.get("/jobs/{name}/clips")
+    def list_clips(name: str) -> dict[str, Any]:
+        if not jobs_mod.get_job(ctx, name):
+            raise HTTPException(404, f"no such job: {name}")
+        return {"clips": clips_mod.list_clips(name)}
+
+    @r.get("/clips/{name}/{file_name}")
+    def download_clip(name: str, file_name: str):
+        p = clips_mod.clip_path(name, file_name)
+        if not p:
+            raise HTTPException(404, "no such clip")
+        return FileResponse(str(p), media_type="video/mp4", filename=file_name)
+
+    @r.delete("/clips/{name}/{file_name}")
+    def remove_clip(name: str, file_name: str) -> dict[str, Any]:
+        if not clips_mod.delete_clip(name, file_name):
+            raise HTTPException(404, "no such clip")
         return {"ok": True}
 
     return r

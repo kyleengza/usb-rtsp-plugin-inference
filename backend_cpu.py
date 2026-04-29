@@ -10,20 +10,13 @@ Output format expected from a vanilla YOLOv8 ONNX export:
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
 import cv2  # type: ignore
 import numpy as np  # type: ignore
 
-
-@dataclass
-class Detection:
-    class_id: int
-    label: str
-    score: float
-    box: tuple[float, float, float, float]
+from dets import Detection  # type: ignore  # shared dataclass
 
 
 class CpuBackend:
