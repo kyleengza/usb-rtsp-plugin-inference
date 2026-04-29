@@ -97,14 +97,33 @@ def make_router(ctx) -> APIRouter:
 
     @r.get("/state")
     def state() -> dict[str, Any]:
-        # Local import to avoid a circular at module load — __init__.py
-        # imports api.make_router.
         from . import live_paths_state, _live_for_job
+        from pathlib import Path as _P
+        import json as _json
         live = live_paths_state()
+        stats_dir = _P.home() / ".cache" / "usb-rtsp" / "inference-stats"
         out_jobs = []
         for j in jobs_mod.list_jobs(ctx):
             item = jobs_mod.job_to_public_dict(j)
             item["_live"] = _live_for_job(j.name, live)
+            # Per-worker stats file (FPS, inference latency). Only present
+            # while the worker is alive AND the writeback has run at least
+            # once — fresh-spawn jobs may not have a file for ~10s.
+            stats_path = stats_dir / f"{j.name}.json"
+            if stats_path.exists():
+                try:
+                    raw = _json.loads(stats_path.read_text())
+                    # Stale if older than 30s — worker exited but file lingered.
+                    import time as _t
+                    if (_t.time() - float(raw.get("ts", 0))) < 30:
+                        item["_stats"] = {
+                            "fps": raw.get("fps"),
+                            "inference_ms_avg": raw.get("inference_ms_avg"),
+                            "dets_per_min": raw.get("dets_per_min"),
+                            "uptime_s": raw.get("uptime_s"),
+                        }
+                except (OSError, ValueError):
+                    pass
             out_jobs.append(item)
         return {
             "jobs": out_jobs,

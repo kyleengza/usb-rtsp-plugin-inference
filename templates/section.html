@@ -94,6 +94,7 @@
       <div class="meta-row">
         <span>classes: {% if j.classes %}{{ j.classes|join(', ') }}{% else %}<em>all</em>{% endif %}</span>
         <span>· threshold: {{ j.threshold }}</span>
+        <span data-perf class="muted small" hidden></span>
         <span>·</span>
         <button type="button" class="clips-pill {% if j.always_on %}on{% else %}off{% endif %}"
                 data-always-on-toggle

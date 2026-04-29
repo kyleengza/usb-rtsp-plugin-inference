@@ -47,6 +47,15 @@
     return ["idle (on-demand)", "idle"];
   }
 
+  function fmtPerf(j) {
+    const s = j._stats;
+    if (!s) return "";
+    const bits = [];
+    if (s.fps != null) bits.push(`${s.fps.toFixed(1)} fps`);
+    if (s.inference_ms_avg != null) bits.push(`${s.inference_ms_avg.toFixed(1)} ms`);
+    return bits.join(" · ");
+  }
+
   async function refresh() {
     let data;
     try {
@@ -65,6 +74,13 @@
       statusEl.textContent = text;
       statusEl.classList.remove("ok", "warn", "err", "idle");
       statusEl.classList.add(kind);
+      // Per-worker performance line (FPS + inference latency).
+      const perfEl = card.querySelector("[data-perf]");
+      if (perfEl) {
+        const txt = j ? fmtPerf(j) : "";
+        perfEl.textContent = txt;
+        perfEl.hidden = !txt;
+      }
     });
   }
 

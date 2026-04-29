@@ -12,12 +12,19 @@ Slice 3: real Hailo inference. CPU backend lands in slice 4.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import signal
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+# Tier-2 telemetry: enabling HAILO_MONITOR=1 *before* hailo_platform is
+# imported makes the SDK write per-stream stats into /tmp/.hailo_monitor/,
+# which hailortcli monitor (and our panel-side helper) can read for
+# utilisation %, FPS, queue depths. Cheap; no observable runtime cost.
+os.environ.setdefault("HAILO_MONITOR", "1")
 
 import cv2  # type: ignore
 import numpy as np  # type: ignore
@@ -236,9 +243,16 @@ def main() -> int:
     signal.signal(signal.SIGINT, _handler)
 
     frames_pushed = 0
+    inference_ms_sum = 0.0
+    inference_count = 0
+    dets_in_window = 0
     last_det_count = 0
     last_log = time.monotonic()
+    started_at = time.monotonic()
     fps_observed = float(fps_int)
+    stats_dir = Path.home() / ".cache" / "usb-rtsp" / "inference-stats"
+    stats_dir.mkdir(parents=True, exist_ok=True)
+    stats_path = stats_dir / f"{args.job_name or 'unnamed'}.json"
     try:
         while not stop["flag"]:
             ok, frame = cap.read()
@@ -246,11 +260,15 @@ def main() -> int:
                 time.sleep(0.05)
                 continue
             ts = time.time()
+            inf_t0 = time.perf_counter()
             try:
                 detections = backend.detect(frame)
             except Exception as e:
                 log(f"inference error (continuing): {e}")
                 detections = []
+            inference_ms_sum += (time.perf_counter() - inf_t0) * 1000.0
+            inference_count += 1
+            dets_in_window += len(detections)
             tracked, track_events = tracker.step(detections, ts_s=ts)
             if event_log:
                 for ev in track_events:
@@ -279,10 +297,33 @@ def main() -> int:
             last_det_count = len(tracked)
             now = time.monotonic()
             if now - last_log > 10:
-                fps_observed = frames_pushed / (now - last_log)
-                log(f"alive · {frames_pushed} frames in {now - last_log:.1f}s "
-                    f"({fps_observed:.1f} fps) · {last_det_count} dets last frame")
+                window_s = now - last_log
+                fps_observed = frames_pushed / window_s
+                avg_inf_ms = (inference_ms_sum / inference_count) if inference_count else 0.0
+                dets_per_min = (dets_in_window / window_s) * 60.0
+                log(f"alive · {frames_pushed} frames in {window_s:.1f}s "
+                    f"({fps_observed:.1f} fps) · {avg_inf_ms:.1f}ms inf · "
+                    f"{last_det_count} dets last frame")
+                # Persist stats so the panel can render them per-job.
+                try:
+                    tmp = stats_path.with_suffix(stats_path.suffix + ".tmp")
+                    tmp.write_text(json.dumps({
+                        "job": args.job_name,
+                        "backend": args.backend,
+                        "model": args.model,
+                        "ts": time.time(),
+                        "uptime_s": round(now - started_at, 1),
+                        "fps": round(fps_observed, 2),
+                        "inference_ms_avg": round(avg_inf_ms, 2),
+                        "dets_per_min": round(dets_per_min, 1),
+                    }, separators=(",", ":")))
+                    tmp.replace(stats_path)
+                except OSError:
+                    pass
                 frames_pushed = 0
+                inference_ms_sum = 0.0
+                inference_count = 0
+                dets_in_window = 0
                 last_log = now
     finally:
         log("shutting down")
