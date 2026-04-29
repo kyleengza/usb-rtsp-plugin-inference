@@ -64,19 +64,27 @@
       return;
     }
     sourcesBox.innerHTML = `<ul class="streams" style="list-style:none;padding:0;margin:0">${
-      sources.map(s => `
-        <li style="display:flex;align-items:center;gap:0.7rem;padding:0.4rem 0;border-bottom:1px solid var(--border)">
-          <label class="switch" title="enable inference on ${escHtml(s.source)}">
+      sources.map(s => {
+        const dim = s.source_missing ? ' style="opacity:0.55"' : '';
+        const badge = s.source_missing
+          ? `<span class="badge err" style="font-size:0.7rem">source disabled/missing</span>`
+          : (s.has_inference
+              ? `<span class="badge ok" style="font-size:0.7rem">${escHtml(s.backend || "")} · ${escHtml(s.model || "")}</span>`
+              : `<span class="muted small" style="font-size:0.72rem">off</span>`);
+        return `
+        <li${dim} data-row="${escHtml(s.source)}" style="display:flex;align-items:center;gap:0.7rem;padding:0.4rem 0;border-bottom:1px solid var(--border)">
+          <label class="switch" title="${s.source_missing
+              ? 'source path is gone — toggle off to remove the orphan job'
+              : 'enable inference on ' + s.source}">
             <input type="checkbox" data-source-toggle="${escHtml(s.source)}" ${s.has_inference ? "checked" : ""}>
             <span class="slider"></span>
           </label>
           <code style="min-width:8em">${escHtml(s.source)}</code>
           <span class="muted" style="font-size:0.78rem">→ <code>${escHtml(s.job_name)}</code></span>
-          ${s.has_inference
-            ? `<span class="badge ok" style="font-size:0.7rem">${escHtml(s.backend || "")} · ${escHtml(s.model || "")}</span>`
-            : `<span class="muted small" style="font-size:0.72rem">off</span>`}
+          ${badge}
           <span class="form-status" data-source-status="${escHtml(s.source)}" style="margin-left:auto;font-size:0.72rem"></span>
-        </li>`).join("")
+        </li>`;
+      }).join("")
     }</ul>`;
   }
   if (sourcesBox) {

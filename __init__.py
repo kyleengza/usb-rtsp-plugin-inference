@@ -66,18 +66,23 @@ def _live_for_job(job_name: str, live: dict, upstream_url: str = "") -> dict | N
 
 def list_inference_sources(ctx) -> list[dict]:
     """Every mediamtx path that's a *source* (not itself an inference
-    output) plus whether inference is currently turned on for it.
-    Lets the settings page show one-click toggles for cam0 / mypc /
-    relay sources without making the user hand-build job specs."""
+    output) plus whether inference is turned on for it. Also includes
+    "orphan" sources — paths that an inference job points at but
+    which no longer appear in mediamtx (USB cam / relay disabled
+    after the inference job was created). They render dimmed so
+    the user can either re-enable the source or delete the orphan
+    job, but the toggle still works for cleanup."""
     jobs_list = jobs_mod.list_jobs(ctx)
     inference_path_names = {j.name for j in jobs_list}
-    # Map upstream URL → existing job (so toggle reflects ON when a
-    # job exists, even if its name doesn't follow the <src>-ai pattern).
     by_upstream = {j.upstream: j for j in jobs_list}
+    live = live_paths_state()
+    seen_sources: set[str] = set()
     out: list[dict] = []
-    for name, p in live_paths_state().items():
+    # 1. Live mediamtx paths that aren't themselves inference outputs.
+    for name, p in live.items():
         if name in inference_path_names:
-            continue  # it's an inference output, not a candidate source
+            continue
+        seen_sources.add(name)
         upstream = f"rtsp://127.0.0.1:8554/{name}"
         existing = by_upstream.get(upstream)
         out.append({
@@ -85,9 +90,30 @@ def list_inference_sources(ctx) -> list[dict]:
             "upstream": upstream,
             "ready": bool(p.get("ready") or p.get("sourceReady")),
             "has_inference": existing is not None,
+            "source_missing": False,
             "job_name": existing.name if existing else f"{name}-ai",
             "backend": existing.backend if existing else None,
             "model": existing.model if existing else None,
+        })
+    # 2. Orphan jobs — upstream refers to a local path mediamtx no
+    # longer knows about. Surface them so the user can see the broken
+    # state instead of the row vanishing silently.
+    prefix = "rtsp://127.0.0.1:8554/"
+    for j in jobs_list:
+        if not j.upstream.startswith(prefix):
+            continue
+        src = j.upstream[len(prefix):].rstrip("/")
+        if not src or src in seen_sources or src in inference_path_names:
+            continue
+        out.append({
+            "source": src,
+            "upstream": j.upstream,
+            "ready": False,
+            "has_inference": True,
+            "source_missing": True,
+            "job_name": j.name,
+            "backend": j.backend,
+            "model": j.model,
         })
     out.sort(key=lambda x: x["source"])
     return out
