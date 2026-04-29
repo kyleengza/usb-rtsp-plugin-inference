@@ -29,12 +29,53 @@
         <span class="slider"></span>
       </label>
       <div class="card-tabs">
+        <button type="button" class="card-tab" data-act="preview">Live preview ▾</button>
+        <button type="button" class="card-tab" data-act="urls">URLs ▾</button>
         <button type="button" class="card-tab" data-act="events">Events ▾</button>
         <button type="button" class="card-tab" data-act="clips">Clips ▾</button>
         <button type="button" class="card-tab" data-act="settings">Settings ▾</button>
         <button type="button" class="card-tab" data-act="delete-job">Remove</button>
       </div>
     </header>
+    <div class="preview" hidden>
+      <div class="preview-controls">
+        <button type="button" class="copy" data-act="preview-reconnect">Reconnect</button>
+      </div>
+      <iframe data-preview-frame loading="lazy" allow="autoplay 'src'" allowfullscreen></iframe>
+    </div>
+    {% set creds_at = (stream_user ~ ':' ~ stream_pass ~ '@') if stream_auth else '' %}
+    {% set webrtc_pre = 'http://' ~ creds_at %}
+    {% set webrtc_suf = ':8889/' ~ j.name ~ '/' %}
+    {% set hls_pre   = 'http://' ~ creds_at %}
+    {% set hls_suf   = ':8888/' ~ j.name ~ '/index.m3u8' %}
+    {% set rtsp_pre  = 'rtsp://' ~ creds_at %}
+    {% set rtsp_suf  = ':8554/' ~ j.name %}
+    {% set webrtc_url = webrtc_pre ~ host ~ webrtc_suf %}
+    {% set hls_url    = hls_pre    ~ host ~ hls_suf    %}
+    {% set rtsp_url   = rtsp_pre   ~ host ~ rtsp_suf   %}
+    <div class="urls-wrap" hidden>
+    <ul class="urls">
+      <li class="url-row" data-url-pre="{{ webrtc_pre }}" data-url-suf="{{ webrtc_suf }}">
+        <span class="url-label url-best">WebRTC</span>
+        <code data-url-display>{{ webrtc_url }}</code>
+        <button type="button" class="copy" data-copy="{{ webrtc_url }}">copy</button>
+        <a class="open-here" href="/preview/{{ j.name }}/" target="_blank" rel="noopener">open here ↗</a>
+        <button type="button" class="qr-btn" data-qr-url="{{ webrtc_url }}" data-qr-label="WebRTC">QR</button>
+      </li>
+      <li class="url-row" data-url-pre="{{ hls_pre }}" data-url-suf="{{ hls_suf }}">
+        <span class="url-label">HLS</span>
+        <code data-url-display>{{ hls_url }}</code>
+        <button type="button" class="copy" data-copy="{{ hls_url }}">copy</button>
+        <button type="button" class="qr-btn" data-qr-url="{{ hls_url }}" data-qr-label="HLS">QR</button>
+      </li>
+      <li class="url-row" data-url-pre="{{ rtsp_pre }}" data-url-suf="{{ rtsp_suf }}">
+        <span class="url-label">RTSP</span>
+        <code data-url-display>{{ rtsp_url }}</code>
+        <button type="button" class="copy" data-copy="{{ rtsp_url }}">copy</button>
+        <button type="button" class="qr-btn" data-qr-url="{{ rtsp_url }}" data-qr-label="RTSP">QR</button>
+      </li>
+    </ul>
+    </div>
     <div class="meta">
       <div class="device">upstream: <code>{{ j.upstream }}</code></div>
       <div>

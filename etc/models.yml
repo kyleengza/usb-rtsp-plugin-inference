@@ -33,12 +33,16 @@ hailo:
     fps_target: 30
 
 cpu:
-  yolov8n:
-    onnx: ~/.cache/usb-rtsp/inference-models/yolov8n.onnx
+  # YOLO11 (Ultralytics' next-gen — same COCO 80 + same (1,84,8400)
+  # output head as YOLOv8, so backend_cpu's decoder is unchanged).
+  # Fetched by pi-bringup from
+  # https://github.com/ultralytics/assets/releases/download/v8.4.0/...
+  yolo11n:
+    onnx: ~/.cache/usb-rtsp/inference-models/yolo11n.onnx
     labels: coco
     fps_target: 8
-  yolov8s:
-    onnx: ~/.cache/usb-rtsp/inference-models/yolov8s.onnx
+  yolo11s:
+    onnx: ~/.cache/usb-rtsp/inference-models/yolo11s.onnx
     labels: coco
     fps_target: 5
 

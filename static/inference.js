@@ -104,6 +104,10 @@
     } catch (e) { alert(`delete error: ${e}`); }
   }
 
+  function previewSrc(name) {
+    return `/preview/${encodeURIComponent(name)}/`;
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
     document.addEventListener("click", e => {
       // Tab toggles inside an inference job card.
@@ -112,7 +116,18 @@
         const card = tab.closest("[data-inference-job]");
         const act = tab.dataset.act;
         const name = card.dataset.inferenceJob;
-        const wrapMap = { events: ".events-wrap", clips: ".clips-wrap", settings: ".settings-wrap" };
+        if (act === "preview-reconnect") {
+          const iframe = card.querySelector("[data-preview-frame]");
+          if (iframe) iframe.src = previewSrc(name) + "?t=" + Date.now();
+          return;
+        }
+        const wrapMap = {
+          preview: ".preview",
+          urls: ".urls-wrap",
+          events: ".events-wrap",
+          clips: ".clips-wrap",
+          settings: ".settings-wrap",
+        };
         const wrapSel = wrapMap[act];
         if (!wrapSel) return;
         const wrap = card.querySelector(wrapSel);
@@ -120,6 +135,10 @@
         wrap.hidden = !wrap.hidden;
         tab.classList.toggle("open", !wrap.hidden);
         if (!wrap.hidden) {
+          if (act === "preview") {
+            const iframe = card.querySelector("[data-preview-frame]");
+            if (iframe && !iframe.src) iframe.src = previewSrc(name);
+          }
           if (act === "events") loadEvents(card, name);
           if (act === "clips") loadClips(card, name);
         }
