@@ -90,14 +90,23 @@ def _resolve_class_ids(labels: list[str], names_csv: str) -> set[int] | None:
     return out
 
 
+def _match_threshold(register_threshold: float) -> float:
+    """The low floor passed to backends. Existing tracks can be matched
+    (and so survive a quick confidence dip) by any detection above this
+    value; new tracks still need ``register_threshold`` to spawn.
+    Half the user threshold, with a 0.05 floor to avoid pure noise."""
+    return max(0.05, register_threshold * 0.5)
+
+
 def make_backend(args, labels: list[str]):
+    match_thr = _match_threshold(args.threshold)
     if args.backend == "hailo":
         from backend_hailo import HailoBackend  # type: ignore
         allow = _resolve_class_ids(labels, args.classes)
         return HailoBackend(
             hef_path=Path(args.model_path),
             labels=labels,
-            threshold=args.threshold,
+            threshold=match_thr,
             allow_class_ids=allow,
         )
     if args.backend == "cpu":
@@ -106,7 +115,7 @@ def make_backend(args, labels: list[str]):
         return CpuBackend(
             onnx_path=Path(args.model_path),
             labels=labels,
-            threshold=args.threshold,
+            threshold=match_thr,
             allow_class_ids=allow,
         )
     raise ValueError(f"unknown backend: {args.backend}")
@@ -196,6 +205,7 @@ def main() -> int:
         iou_threshold=0.3,
         ttl_s=args.track_occlusion_s,
         min_hits=args.min_hits,
+        register_threshold=args.threshold,
     )
     event_log = JobEventLog(args.job_name) if args.job_name else None
 

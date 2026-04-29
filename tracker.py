@@ -82,14 +82,21 @@ class IoUTracker:
         iou_threshold: float = 0.3,
         ttl_s: float = 2.0,
         min_hits: int = 3,
+        register_threshold: float = 0.4,
     ) -> None:
         self.iou_threshold = float(iou_threshold)
         self.ttl_s = float(ttl_s)
         # Banding: a track must match at least ``min_hits`` frames before
         # the worker draws its box. Filters out single-frame false
-        # positives that would otherwise blink on for one frame and
-        # leave a confidence ghost behind.
+        # positives that would otherwise blink on for one frame.
         self.min_hits = max(1, int(min_hits))
+        # Two-stage threshold (ByteTrack-style):
+        #   - Backend emits detections down to a low floor (match floor).
+        #   - register_threshold is the high floor for *creating* a new
+        #     track from an unmatched detection. Existing tracks can be
+        #     matched (and so survive a brief confidence dip) by any
+        #     detection above the backend's floor.
+        self.register_threshold = float(register_threshold)
         self._tracks: dict[int, _Track] = {}
         self._next_id = 1
 
@@ -131,12 +138,17 @@ class IoUTracker:
                 used_det.add(best_idx)
                 matches[tid] = best_idx
 
-        # Unmatched detections → new (tentative) tracks. Don't emit
-        # an "enter" event yet — wait until the track is confirmed
-        # via min_hits, otherwise a one-frame false positive would
-        # spam events + clip triggers.
+        # Unmatched detections → new (tentative) tracks ONLY if the
+        # detection clears register_threshold. Lower-confidence
+        # unmatched detections are dropped — they couldn't lift an
+        # existing track and they're too weak to spawn one. Keeps the
+        # track count bounded under noisy backends. No "enter" event
+        # yet either — wait for min_hits confirmation so single-frame
+        # false positives never trigger downstream side-effects.
         for i, d in enumerate(detections):
             if i in used_det:
+                continue
+            if d.score < self.register_threshold:
                 continue
             tid = self._next_id
             self._next_id += 1
