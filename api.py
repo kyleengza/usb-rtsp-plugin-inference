@@ -15,6 +15,7 @@ from . import jobs as jobs_mod
 from . import models as models_mod
 from . import events as events_mod
 from . import clips as clips_mod
+from . import plugin_config
 
 
 def _rerender_and_restart() -> dict[str, Any]:
@@ -42,6 +43,10 @@ class ClipsIn(BaseModel):
 
 class ClipsToggleIn(BaseModel):
     enabled: bool
+
+
+class PluginConfigIn(BaseModel):
+    clips_root: str
 
 
 class JobIn(BaseModel):
@@ -99,7 +104,26 @@ def make_router(ctx) -> APIRouter:
                 "hailo": models_mod.has_backend("hailo"),
                 "cpu": models_mod.has_backend("cpu"),
             },
+            "clips_root": str(plugin_config.clips_root(ctx)),
         }
+
+    @r.get("/config")
+    def get_config() -> dict[str, Any]:
+        return {"clips_root": str(plugin_config.clips_root(ctx))}
+
+    @r.put("/config")
+    def put_config(payload: PluginConfigIn) -> dict[str, Any]:
+        try:
+            new_root = plugin_config.set_clips_root(ctx, payload.clips_root)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        # Re-render only — no service bounce. Worker only reads
+        # --clips-root at next on-demand spawn; existing clips at the
+        # old root remain there (manual move if you want them in the
+        # new tree).
+        from .api import _rerender_and_restart  # safe self-import
+        result = _rerender_and_restart()
+        return {"clips_root": str(new_root), **result}
 
     @r.get("/models")
     def list_models() -> dict[str, Any]:
@@ -178,21 +202,24 @@ def make_router(ctx) -> APIRouter:
     def list_clips(name: str) -> dict[str, Any]:
         if not jobs_mod.get_job(ctx, name):
             raise HTTPException(404, f"no such job: {name}")
+        root = plugin_config.clips_root(ctx)
         return {
-            "clips": clips_mod.list_clips(name),
-            "total_size_bytes": clips_mod.clips_total_size(name),
+            "clips": clips_mod.list_clips(root, name),
+            "total_size_bytes": clips_mod.clips_total_size(root, name),
         }
 
     @r.get("/clips/{name}/{file_name}")
     def download_clip(name: str, file_name: str):
-        p = clips_mod.clip_path(name, file_name)
+        root = plugin_config.clips_root(ctx)
+        p = clips_mod.clip_path(root, name, file_name)
         if not p:
             raise HTTPException(404, "no such clip")
         return FileResponse(str(p), media_type="video/mp4", filename=file_name)
 
     @r.delete("/clips/{name}/{file_name}")
     def remove_clip(name: str, file_name: str) -> dict[str, Any]:
-        if not clips_mod.delete_clip(name, file_name):
+        root = plugin_config.clips_root(ctx)
+        if not clips_mod.delete_clip(root, name, file_name):
             raise HTTPException(404, "no such clip")
         return {"ok": True}
 

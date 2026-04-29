@@ -299,7 +299,92 @@
     }
   }
 
+  function wireClipsRootEdit() {
+    const editBtn = document.querySelector("[data-edit-clips-root]");
+    if (!editBtn) return;
+    const display = document.querySelector("[data-clips-root-display]");
+    if (!display) return;
+    editBtn.addEventListener("click", () => {
+      // Toggle to inline edit mode.
+      const current = display.textContent.trim();
+      const row = display.parentElement;
+      const original = display.outerHTML + " " + editBtn.outerHTML;
+      // Build edit form.
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = current;
+      input.setAttribute("data-clips-root-input", "");
+      const save = document.createElement("button");
+      save.type = "button";
+      save.className = "copy";
+      save.textContent = "save";
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.className = "copy";
+      cancel.textContent = "cancel";
+      const status = document.createElement("span");
+      status.className = "inference-config-status";
+      status.setAttribute("data-clips-root-status", "");
+      // Replace display + edit button with the input cluster.
+      display.replaceWith(input);
+      editBtn.replaceWith(save);
+      save.after(cancel, status);
+      input.focus();
+      input.select();
+
+      const restore = (newPath) => {
+        const code = document.createElement("code");
+        code.setAttribute("data-clips-root-display", "");
+        code.textContent = newPath;
+        const newEdit = document.createElement("button");
+        newEdit.type = "button";
+        newEdit.className = "copy";
+        newEdit.setAttribute("data-edit-clips-root", "");
+        newEdit.textContent = "edit";
+        // Wipe edit cluster + put display back.
+        input.replaceWith(code);
+        save.replaceWith(newEdit);
+        cancel.remove();
+        status.remove();
+        wireClipsRootEdit();  // re-wire for next time
+      };
+      cancel.addEventListener("click", () => restore(current));
+      save.addEventListener("click", async () => {
+        const want = input.value.trim();
+        save.disabled = true;
+        cancel.disabled = true;
+        status.textContent = "saving…";
+        status.className = "inference-config-status";
+        try {
+          const r = await fetch("/api/inference/config", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({ clips_root: want }),
+          });
+          const text = await r.text();
+          let data = null;
+          try { data = JSON.parse(text); } catch {}
+          if (!r.ok) {
+            status.textContent = "✗ " + (data ? fmtErrDetail(data.detail, r.status) : (text || r.status));
+            status.classList.add("err");
+            save.disabled = false;
+            cancel.disabled = false;
+            return;
+          }
+          restore((data && data.clips_root) || want);
+        } catch (e) {
+          status.textContent = "✗ " + e;
+          status.classList.add("err");
+          save.disabled = false;
+          cancel.disabled = false;
+        }
+      });
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
+    wireClipsRootEdit();
     // Populate model dropdowns on page load + wire backend-pill + chips.
     $$("[data-inf-form]").forEach(form => {
       refreshModelOptions(form);

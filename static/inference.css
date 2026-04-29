@@ -110,3 +110,34 @@
 }
 .clips-pill.off { color: var(--muted); }
 .clips-pill.busy { opacity: 0.6; pointer-events: none; }
+
+/* Plugin-level config row at the top of the section. */
+.inference-config {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0.4rem 0 0.5rem;
+  font-size: 0.78rem;
+}
+.inference-config .muted { color: var(--muted); }
+.inference-config .small { font-size: 0.7rem; }
+.inference-config code {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.1rem 0.4rem;
+}
+.inference-config input[type=text] {
+  background: #0a0d12;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.25rem 0.45rem;
+  font: inherit;
+  font-size: 0.78rem;
+  min-width: 22em;
+}
+.inference-config-status { font-size: 0.7rem; color: var(--muted); }
+.inference-config-status.ok { color: var(--ok, #80c97a); }
+.inference-config-status.err { color: var(--err, #d27272); }

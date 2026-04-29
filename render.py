@@ -13,6 +13,7 @@ from typing import Any
 
 from . import jobs as jobs_mod
 from . import models as models_mod
+from . import plugin_config
 
 PLUGIN_DIR = Path(__file__).resolve().parent
 WORKER_PATH = PLUGIN_DIR / "worker.py"
@@ -27,7 +28,7 @@ def _resolve_model_path(backend: str, model_name: str) -> str:
     return str(m.onnx)  # type: ignore[union-attr]
 
 
-def _build_runondemand(j: jobs_mod.Job) -> str:
+def _build_runondemand(j: jobs_mod.Job, clips_root: str) -> str:
     model_path = _resolve_model_path(j.backend, j.model)
     parts = [
         "/usr/bin/python3",
@@ -46,6 +47,7 @@ def _build_runondemand(j: jobs_mod.Job) -> str:
         parts.extend(["--classes", ",".join(j.classes)])
     if j.clips.enabled:
         parts.append("--clips-enabled")
+        parts.extend(["--clips-root", clips_root])
         parts.extend(["--clip-post-roll-s", f"{j.clips.post_roll_s:.2f}"])
         parts.extend(["--clip-trigger", j.clips.trigger])
         parts.extend(["--clip-retention", str(j.clips.retention_count)])
@@ -56,6 +58,7 @@ def _build_runondemand(j: jobs_mod.Job) -> str:
 
 def build_paths(ctx) -> dict[str, Any]:
     paths: dict[str, Any] = {}
+    clips_root = str(plugin_config.clips_root(ctx))
     for j in jobs_mod.list_jobs(ctx):
         if not j.enabled:
             continue
@@ -66,7 +69,7 @@ def build_paths(ctx) -> dict[str, Any]:
             continue
         paths[j.name] = {
             "source": "publisher",
-            "runOnDemand": _build_runondemand(j),
+            "runOnDemand": _build_runondemand(j, clips_root),
             # Hailo failures are usually transient (busy device, model
             # reload); CPU failures are usually persistent (bad ONNX,
             # missing class). Restart accordingly.

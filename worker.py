@@ -169,6 +169,7 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--track-occlusion-s", type=float, default=2.0)
     # Clip recording
     ap.add_argument("--clips-enabled", action="store_true")
+    ap.add_argument("--clips-root", default="")  # absolute path, plugin-config-resolved
     ap.add_argument("--clip-post-roll-s", type=float, default=10.0)
     ap.add_argument("--clip-trigger", default="track_enter")
     ap.add_argument("--clip-trigger-classes", default="")
@@ -207,6 +208,7 @@ def main() -> int:
         clipper = ClipRecorder(
             job_name=args.job_name,
             width=w, height=h, fps=fps_int,
+            root=args.clips_root or None,
             post_roll_s=args.clip_post_roll_s,
             retention_count=args.clip_retention,
             trigger=args.clip_trigger,

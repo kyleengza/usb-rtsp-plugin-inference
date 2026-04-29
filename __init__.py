@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from .api import make_router
 from . import jobs as jobs_mod
 from . import models as models_mod
+from . import plugin_config
 from . import render as render_mod
 
 __all__ = ["register", "render_paths", "section_context", "live_paths_state"]
@@ -83,4 +84,5 @@ def section_context(ctx, request) -> dict:
             "cpu": models_mod.has_backend("cpu"),
         },
         "inference_coco_labels": models_mod.all_labels("coco"),
+        "inference_clips_root": str(plugin_config.clips_root(ctx)),
     }

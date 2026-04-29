@@ -28,7 +28,12 @@ from pathlib import Path
 
 import numpy as np  # type: ignore
 
-CLIPS_ROOT = Path.home() / ".cache" / "usb-rtsp" / "inference-clips"
+# Default root, used when no per-plugin override is set. The
+# read-side helpers (list_clips, clip_path, ...) and the worker's
+# ClipRecorder both take an explicit ``root`` so callers in different
+# contexts (API process / worker subprocess) resolve the path the
+# same way.
+DEFAULT_CLIPS_ROOT = Path.home() / ".cache" / "usb-rtsp" / "inference-clips"
 
 
 @dataclass
@@ -46,6 +51,7 @@ class ClipRecorder:
         width: int,
         height: int,
         fps: int,
+        root: Path | str | None = None,
         post_roll_s: float = 10.0,
         retention_count: int = 100,
         trigger: str = "track_enter",
@@ -59,7 +65,8 @@ class ClipRecorder:
         self.retention_count = max(1, int(retention_count))
         self.trigger = trigger
         self.trigger_classes = set(trigger_classes) if trigger_classes else None
-        self.dir = CLIPS_ROOT / job_name
+        self.root = Path(root).expanduser() if root else DEFAULT_CLIPS_ROOT
+        self.dir = self.root / job_name
         self.dir.mkdir(parents=True, exist_ok=True)
         self._current: _ActiveClip | None = None
 
@@ -208,9 +215,9 @@ def _clip_duration_s(p: Path, mtime: float) -> float | None:
     return dur
 
 
-def list_clips(job_name: str) -> list[dict]:
+def list_clips(root: Path, job_name: str) -> list[dict]:
     """Used by the API to render the clips list."""
-    job_dir = CLIPS_ROOT / job_name
+    job_dir = root / job_name
     if not job_dir.is_dir():
         return []
     out = []
@@ -228,8 +235,8 @@ def list_clips(job_name: str) -> list[dict]:
     return out
 
 
-def clips_total_size(job_name: str) -> int:
-    job_dir = CLIPS_ROOT / job_name
+def clips_total_size(root: Path, job_name: str) -> int:
+    job_dir = root / job_name
     if not job_dir.is_dir():
         return 0
     total = 0
@@ -241,21 +248,21 @@ def clips_total_size(job_name: str) -> int:
     return total
 
 
-def clip_path(job_name: str, file_name: str) -> Path | None:
+def clip_path(root: Path, job_name: str, file_name: str) -> Path | None:
     """Resolve a clip path safely (no traversal). Returns None if not found."""
     if "/" in file_name or "\\" in file_name or ".." in file_name:
         return None
-    p = (CLIPS_ROOT / job_name / file_name).resolve()
-    root = (CLIPS_ROOT / job_name).resolve()
+    base = (root / job_name).resolve()
+    p = (base / file_name).resolve()
     try:
-        p.relative_to(root)
+        p.relative_to(base)
     except ValueError:
         return None
     return p if p.is_file() else None
 
 
-def delete_clip(job_name: str, file_name: str) -> bool:
-    p = clip_path(job_name, file_name)
+def delete_clip(root: Path, job_name: str, file_name: str) -> bool:
+    p = clip_path(root, job_name, file_name)
     if not p:
         return False
     try:

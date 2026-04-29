@@ -11,6 +11,13 @@
     </span>
   </div>
 
+  <div class="inference-config">
+    <span class="muted">Clips root:</span>
+    <code data-clips-root-display>{{ inference_clips_root }}</code>
+    <button type="button" class="copy" data-edit-clips-root>edit</button>
+    <span class="muted small">subfolders are auto-created per job (cam0-ai/…, relay-front-ai/…)</span>
+  </div>
+
   {% if not inference_jobs %}
     <p class="empty">
       No inference jobs configured. Add one from the
